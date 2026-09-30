@@ -56,6 +56,31 @@ export function toolCallResponse(rawCallId: string, name: string, args: object, 
 }
 
 /**
+ * A truncated tool-call response — the fourth-wave failure shape. The provider
+ * stream ends mid-invocation (reasoning leaves an unclosed `<invoke
+ * name="read">`), yet the adapter still reports `stopReason: toolUse`, so the
+ * assembled tool-call block carries an empty `id`/`name`. Executing it would
+ * write a `tool/result` whose empty `toolCallId` fails session format v4
+ * admission; the loop must reject it (DEGENERATE_OUTPUT) before persisting.
+ */
+export function truncatedToolCallResponse(text = 'Let me read the forge normalization around L256.'): StreamChunk[] {
+  return [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text } },
+    { type: 'block-start', index: 1, blockType: 'tool-call' },
+    { type: 'tool-call-delta', index: 1, id: ToolCallId(''), argumentsDelta: '{}' },
+    {
+      type: 'block-end',
+      index: 1,
+      block: { type: 'tool-call', id: ToolCallId(''), name: '', arguments: '{}' },
+    },
+    { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } },
+    { type: 'finish', reason: { kind: 'tool-calls' } },
+  ]
+}
+
+/**
  * A reasoning-only response that loops short repeated fragments — the
  * degenerate-output signature the loop must reject (code `DEGENERATE_OUTPUT`)
  * before persisting. `OK.` dominates ~50% of the lines, all ≤ 24 chars.
@@ -71,6 +96,37 @@ export function degenerateReasoningResponse(lines = 200): StreamChunk[] {
     { type: 'block-end', index: 0, block: { type: 'reasoning', text } },
     { type: 'usage', usage: { inputTokens: 10, outputTokens: text.length } },
     { type: 'finish', reason: { kind: 'stop' } },
+  ]
+}
+
+/**
+ * The second-wave failure shape: the loop is emitted as a *visible text* block
+ * (`OK.` / `Go.` / `Let me issue.` fragments) followed by a pseudo-progress
+ * tool call — exactly what the harness-suite session produced on 2026-09-30.
+ * The old guard (text ⇒ deliverable, tool call ⇒ progress) let this through;
+ * the current guard analyzes reasoning + text together, so the degenerate text
+ * must be rejected even with the tool call attached.
+ */
+export function degenerateTextResponse(lines = 184): StreamChunk[] {
+  const fragments = ['Go.', 'Issuing.', 'Let me issue.', 'I will launch the review.']
+  const text = Array.from({ length: lines }, (_unused, index) => (
+    index % 2 === 0 ? 'OK.' : fragments[Math.floor(index / 2) % fragments.length]
+  )).join('\n')
+  const callId = ToolCallId('call-degen')
+  return [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    ...Array.from(text, (char): StreamChunk => ({ type: 'text-delta', index: 0, text: char })),
+    { type: 'block-end', index: 0, block: { type: 'text', text } },
+    { type: 'block-start', index: 1, blockType: 'tool-call' },
+    { type: 'tool-call-delta', index: 1, id: callId, name: 'job_output', argumentsDelta: '{"job' },
+    { type: 'tool-call-delta', index: 1, id: callId, argumentsDelta: '_id":"pwsh-50"}' },
+    {
+      type: 'block-end',
+      index: 1,
+      block: { type: 'tool-call', id: callId, name: 'job_output', arguments: '{"job_id":"pwsh-50"}' },
+    },
+    { type: 'usage', usage: { inputTokens: 10, outputTokens: text.length } },
+    { type: 'finish', reason: { kind: 'tool-calls' } },
   ]
 }
 
