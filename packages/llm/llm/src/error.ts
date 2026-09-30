@@ -42,6 +42,19 @@ export const ACCOUNT_QUOTA_EXCEEDED_CODE = 'ACCOUNT_QUOTA'
 export const EMPTY_RESPONSE_CODE = 'EMPTY_RESPONSE'
 
 /**
+ * Canonical provider-neutral code for a response that completed but carries no
+ * usable progress: the model looped on short repeated fragments instead of
+ * answering or calling a tool. Providers under long-context stress occasionally
+ * degenerate into emitting the same few lines of reasoning over and over (the
+ * loop then surfaces them as a turn that "completed" with nothing actionable).
+ * The agent loop classifies such output as this failure before it is persisted,
+ * so the garbage never enters the durable log or feeds the next request; retry
+ * policy treats it as safe to repeat, and an exhausted retry budget ends the
+ * turn with a visible error instead of a silent completion.
+ */
+export const DEGENERATE_OUTPUT_CODE = 'DEGENERATE_OUTPUT'
+
+/**
  * Canonical provider-neutral code for a credential that was supplied but
  * cannot be used — malformed rather than absent. Distinct from
  * `MISSING_CREDENTIAL` because the fix differs: correct the stored value

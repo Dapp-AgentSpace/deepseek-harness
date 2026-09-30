@@ -18,6 +18,7 @@ import type {
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
 import {
+  DEGENERATE_OUTPUT_CODE,
   LlmError,
   createAssistantMessage,
   createDeveloperMessage,
@@ -36,6 +37,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.ts'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { AssistantStreamAttempt } from './assistant-stream.ts'
+import { degenerateOutputReason } from './degenerate.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
 import { executeToolCalls } from './tool-calls.ts'
 
@@ -517,6 +519,31 @@ export class ReactLoopAgent implements Agent {
             ...live.replayState !== undefined ? { replayState: live.replayState } : {},
           },
         })
+        // A response that looped on repeated fragments is unusable progress: it
+        // must never be persisted (it would pollute the session log and feed
+        // back into the next request) nor counted as a completed turn. Classify
+        // it before settling and route it through the request-error pipeline so
+        // retry policy can decide (DEGENERATE_OUTPUT is retryable by default).
+        const degenerateReason = degenerateOutputReason(message.content)
+        if (degenerateReason !== undefined) {
+          live.abandon()
+          const action = await this.dispatch.waterfall(
+            'agent/request-error', {
+              turn,
+              step,
+              provider: request.provider,
+              failure: { message: degenerateReason, code: DEGENERATE_OUTPUT_CODE },
+              retryPolicy: preparedCall?.retryPolicy,
+              signal,
+            },
+            () => Promise.resolve<RequestErrorAction>(undefined),
+          )
+          signal.throwIfAborted()
+          if (action?.kind !== 'retry') {
+            throw new LlmError(degenerateReason, DEGENERATE_OUTPUT_CODE)
+          }
+          continue
+        }
         live.settle(
           'assistant/message',
           () => this.session.append('assistant/message', {

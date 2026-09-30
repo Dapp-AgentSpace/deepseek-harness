@@ -55,6 +55,25 @@ export function toolCallResponse(rawCallId: string, name: string, args: object, 
   return chunks
 }
 
+/**
+ * A reasoning-only response that loops short repeated fragments — the
+ * degenerate-output signature the loop must reject (code `DEGENERATE_OUTPUT`)
+ * before persisting. `OK.` dominates ~50% of the lines, all ≤ 24 chars.
+ */
+export function degenerateReasoningResponse(lines = 200): StreamChunk[] {
+  const fragments = ['Go.', 'Now.', 'Issue.', 'Let me read.', 'Reading.']
+  const text = Array.from({ length: lines }, (_unused, index) => (
+    index % 2 === 0 ? 'OK.' : fragments[Math.floor(index / 2) % fragments.length]
+  )).join('\n')
+  return [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    ...Array.from(text, (char): StreamChunk => ({ type: 'reasoning-delta', index: 0, text: char })),
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text } },
+    { type: 'usage', usage: { inputTokens: 10, outputTokens: text.length } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+}
+
 /** Script entry that streams the given chunks, then hangs until aborted. */
 export interface HangAfter {
   hangAfter: StreamChunk[]

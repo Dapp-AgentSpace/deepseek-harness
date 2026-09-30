@@ -10,7 +10,7 @@ import AgentRegistry, { type Agent, type AssistantStreamFrame } from '@deepseek-
 
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from './mock-adapter.ts'
+import { MockAdapter, degenerateReasoningResponse, maxTokensResponse, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -206,6 +206,58 @@ describe('agent loop', () => {
     expect(frames.filter(frame => frame.type === 'end').map(frame => (
       frame.outcome.kind === 'committed' ? frame.outcome.eventType : frame.outcome.kind
     ))).toEqual(['assistant/attempt', 'assistant/message'])
+  })
+
+  it('rejects degenerate output before persisting and retries to a real answer', async () => {
+    const ctx = await harness(new MockAdapter([degenerateReasoningResponse(200), textResponse('recovered')]))
+    const agent = await ctx.agentLoop.create(SessionId('degenerate-retry'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const failures: Array<{ code: string; message: string }> = []
+    ctx.on('agent/request-error', async ({ failure }) => {
+      failures.push({ code: failure.code, message: failure.message })
+      return { kind: 'retry' as const }
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // The degenerate attempt must never reach the durable log.
+    const messages = agent.session.snapshotEvents().filter(event => event.type === 'assistant/message')
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?.type === 'assistant/message' ? messages[0].data.message.content : undefined)
+      .toEqual([{ type: 'text', text: 'recovered' }])
+    // The failure surfaced through the request-error pipeline with our code.
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.code).toBe('DEGENERATE_OUTPUT')
+    expect(failures[0]?.message).toMatch(/degenerate output/)
+    // The turn completed normally after the retried answer.
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'completed' } },
+    })
+  })
+
+  it('ends the turn with a visible error when degenerate output cannot be retried', async () => {
+    const ctx = await harness(new MockAdapter([degenerateReasoningResponse(200)]))
+    const agent = await ctx.agentLoop.create(SessionId('degenerate-terminal'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // No garbage persisted at all.
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'assistant/message')).toHaveLength(0)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'assistant/attempt')).toHaveLength(0)
+    // The turn ends with an explicit error carrying the DEGENERATE_OUTPUT code.
+    const end = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    expect(end?.type === 'turn/end' ? end.data.reason : undefined).toMatchObject({
+      kind: 'error',
+      error: { code: 'DEGENERATE_OUTPUT' },
+    })
   })
 
   it('does not emit an end frame when prepared dispatch throws before start', async () => {
