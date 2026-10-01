@@ -16,19 +16,25 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
 import {
   DEGENERATE_OUTPUT_CODE,
   LlmError,
   createAssistantMessage,
   createDeveloperMessage,
+  createUserMessage,
   errorChain,
   markAgentLoopRequest,
 } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'agent-loop-progress': { kind: 'agent-loop-progress'; form: 'notice' | 'progress' }
+  }
+}
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
-import type { EpochHeader, RequestContext, Session, SessionId, SessionSeq, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
+import type { EpochHeader, RequestContext, Session, SessionEvent, SessionId, SessionSeq, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
 import { canonicalHeader, headerEquals, ToolCallRecovery } from '@deepseek-ai/dsh-session'
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
@@ -40,6 +46,111 @@ import { AssistantStreamAttempt } from './assistant-stream.ts'
 import { degenerateOutputReason } from './degenerate.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
 import { executeToolCalls } from './tool-calls.ts'
+
+/**
+ * Self-monitoring knobs for main-session turns. The loop resists premature
+ * plain-text completion while todos remain unfinished, reviews automatic
+ * compaction recovery points, and reports progress for long turns.
+ */
+
+/** How many consecutive premature completions the todo guard may interrupt before deferring. */
+const TODO_GUARD_LIMIT = 2
+/** First progress heartbeat delay (ms) after a turn starts. */
+const PROGRESS_FIRST_MS = 30_000
+/** Progress heartbeat interval (ms) after the first has fired. */
+const PROGRESS_INTERVAL_MS = 60_000
+/** Model-visible source shared by guard, compaction-review and progress notices. */
+const AGENT_LOOP_NOTICE_SOURCE = { kind: 'agent-loop-progress', form: 'notice' } as const
+/**
+ * How many consecutive plain-text completions that repeat the same fragment
+ * the repetition guard may interrupt before deferring. Mirrors TODO_GUARD_LIMIT:
+ * two interruptions give the model a chance to recover under guidance; a third
+ * identical non-progress text is then let through so the loop cannot pin forever.
+ */
+const REPETITION_GUARD_LIMIT = 2
+/**
+ * A text-only reply whose single most repeated paragraph accounts for at least
+ * this many occurrences is treated as a degenerate loop. The observed failure
+ * (c079 / cs-epic runcard advance) repeated one sentence ~475 times; ordinary
+ * prose never reaches even a handful of identical paragraphs.
+ */
+const REPETITION_MIN_COUNT = 8
+/**
+ * Only a paragraph at least this long is evidence of a meaningful loop. Tiny
+ * repeated interjections ("OK.", "Go.") are handled by the line-level
+ * DEGENERATE_OUTPUT classifier instead.
+ */
+const REPETITION_MIN_PARAGRAPH_CHARS = 30
+/**
+ * Windows shell preference surfaced into every main-session request: `bash`
+ * must resolve to Git Bash, not WSL. The cs-epic loop that prompted this fix
+ * repeatedly called `bash ci/bin/harness-runcard.sh` and got a WSL
+ * "localhost cannot connect" error (the script never ran), then degenerated
+ * into repeating "let me read the usage". The hint keeps the model on Git Bash
+ * so the shell tool actually executes.
+ */
+const SHELL_PREFERENCE_HINT = 'On Windows, when you need a bash shell, prefer Git Bash (e.g. "C:\\Program Files\\Git\\bin\\bash.exe") over WSL: WSL often fails with "localhost cannot connect" and the command never runs.'
+
+/** One entry of a plugin `todo/write` payload. */
+interface TodoItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+/** Todos that are not yet done; the loop treats these as unfinished work. */
+function unfinishedTodos(todos: unknown): TodoItem[] {
+  if (!Array.isArray(todos)) return []
+  return todos.filter((item): item is TodoItem =>
+    typeof item === 'object' && item !== null
+      && typeof (item as TodoItem).content === 'string'
+      && ((item as TodoItem).status === 'pending' || (item as TodoItem).status === 'in_progress'))
+}
+
+/** Human-readable elapsed time for progress notices. */
+function formatElapsed(ms: number): string {
+  const total = Math.round(ms / 1_000)
+  if (total < 60) return `${total}s`
+  const minutes = Math.floor(total / 60)
+  if (minutes < 60) return `${minutes}m ${total % 60}s`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${minutes % 60}m ${total % 60}s`
+}
+
+/**
+ * Detect a text-only degenerate loop at the *paragraph* level: the same
+ * sentence/passage repeated many times with no tool call. This is the failure
+ * mode the line-level {@link degenerateOutputReason} can miss — a long line
+ * (e.g. "The usage is `advance <runcard-id> ...`. Let me read the script usage
+ * section:") stays above the short-line threshold, so the whole-line classifier
+ * never fires even though the message is ~475 repetitions of one sentence.
+ * Returns the dominant repeated paragraph (trimmed) and its count, or undefined
+ * when the text is not dominated by repetition.
+ */
+function textRepetitionReason(blocks: readonly ContentBlock[]): { fragment: string; count: number } | undefined {
+  const paragraphs: string[] = []
+  for (const block of blocks) {
+    if (block.type !== 'text') continue
+    for (const raw of block.text.split(/\n\n+/)) {
+      const paragraph = raw.replace(/\s+/g, ' ').trim()
+      if (paragraph.length >= REPETITION_MIN_PARAGRAPH_CHARS) paragraphs.push(paragraph)
+    }
+  }
+  if (paragraphs.length < REPETITION_MIN_COUNT) return undefined
+  const counts = new Map<string, number>()
+  for (const paragraph of paragraphs) counts.set(paragraph, (counts.get(paragraph) ?? 0) + 1)
+  let top = ''
+  let topCount = 0
+  for (const [paragraph, count] of counts) {
+    if (count > topCount) {
+      top = paragraph
+      topCount = count
+    }
+  }
+  if (topCount >= REPETITION_MIN_COUNT) {
+    return { fragment: top.slice(0, 90), count: topCount }
+  }
+  return undefined
+}
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }
@@ -120,6 +231,14 @@ export class ReactLoopAgent implements Agent {
   private readonly systemPrompt: SystemPromptProjection
   /** Identities fully frozen by this loop; weak references do not retain replaced history. */
   private readonly frozenMessages = new WeakSet<Message>()
+  /** Latest `todo/write` snapshot; `null` until the first one is seen. */
+  private lastTodoWrite: { seq: SessionSeq; todos: TodoItem[] } | null = null
+  /** Set when the session recorded an automatic compaction summary/end. */
+  private compactionPending = false
+  /** Consecutive plain-text completions the todo guard has interrupted. */
+  private todoGuardCount = 0
+  /** Consecutive plain-text completions the repetition guard has interrupted. */
+  private repetitionGuardCount = 0
 
   constructor(
     private loopCtx: Context,
@@ -137,6 +256,40 @@ export class ReactLoopAgent implements Agent {
     this.phase = { kind: 'idle', lastTurn }
     this.runtimeContext = new RuntimeContextProjection(this.ctx, session)
     this.systemPrompt = new SystemPromptProjection(session)
+    this.observeLoopState(session)
+  }
+
+  /**
+   * Follow plugin-merged `todo/write` and `compaction/*` events so the loop can
+   * resist premature completion and review compaction recovery points. Both
+   * event kinds are SessionEventMap extensions that may not be visible at this
+   * compile site, so they are read through a structural view rather than the
+   * closed SessionEvent union.
+   */
+  private observeLoopState(session: Session): void {
+    const view = (event: SessionEvent): { type: string; seq: SessionSeq; data: { todos?: unknown } } =>
+      event as unknown as { type: string; seq: SessionSeq; data: { todos?: unknown } }
+    this.ctx.on('session/event', (subject, event) => {
+      if (subject !== session) return
+      const observed = view(event)
+      if (observed.type === 'todo/write') {
+        this.lastTodoWrite = { seq: observed.seq, todos: unfinishedTodos(observed.data.todos) }
+      } else if (observed.type === 'compaction/summary' || observed.type === 'compaction/end') {
+        this.compactionPending = true
+      }
+    })
+    // Seed from the most recent todo/write so a resumed loop still guards.
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+    const events = session.snapshotEvents()
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event === undefined) continue
+      const observed = view(event)
+      if (observed.type === 'todo/write') {
+        this.lastTodoWrite = { seq: observed.seq, todos: unfinishedTodos(observed.data.todos) }
+        break
+      }
+    }
   }
 
   get status(): AgentStatus {
@@ -274,7 +427,17 @@ export class ReactLoopAgent implements Agent {
     const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
     signal.throwIfAborted()
     const sections = renderContextSections(assembly)
-    const context = this.runtimeContext.project(joinContextSections(sections), sections)
+    // Surface the Windows Git Bash preference as part of the runtime context so
+    // every main-session request carries it (the projection deduplicates the
+    // identical snapshot after the first projection). Only when a shell is
+    // actually relevant: win32 hosts.
+    let contextText = joinContextSections(sections)
+    if (process.platform === 'win32') {
+      contextText = contextText.length === 0
+        ? SHELL_PREFERENCE_HINT
+        : `${SHELL_PREFERENCE_HINT}\n\n${contextText}`
+    }
+    const context = this.runtimeContext.project(contextText, sections)
     const decision = await this.dispatch.waterfall(
       'agent/pre-step', { messages: claimed, ...position, signal },
       (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
@@ -309,6 +472,8 @@ export class ReactLoopAgent implements Agent {
       this.throwError(error)
     }
     phase.turn = turn
+    const turnStartedAt = Date.now()
+    let lastProgressAt = turnStartedAt
     let turnEnds: TurnEndReason | null = null
     let target: InboxTarget = 'next-turn'
     try {
@@ -356,6 +521,19 @@ export class ReactLoopAgent implements Agent {
         } finally {
           stopRecovery()
           this.session.append('step/end', { turn, step })
+        }
+        const elapsed = Date.now() - turnStartedAt
+        if (turnEnds === null
+          && elapsed >= PROGRESS_FIRST_MS
+          && Date.now() - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+          lastProgressAt = Date.now()
+          this.session.append('user/message', createUserMessage({
+            content: [{
+              type: 'text',
+              text: `(System progress) turn ${turn} has executed ${step} step(s), ${formatElapsed(Date.now() - turnStartedAt)} elapsed. The task is still in progress; continue working and do not reply to this message.`,
+            }],
+            source: AGENT_LOOP_NOTICE_SOURCE,
+          }), { surfaceOp: 'append' })
         }
         signal.throwIfAborted()
         if (turnEnds && this.inbox.nextStep.length === 0) {
@@ -407,6 +585,20 @@ export class ReactLoopAgent implements Agent {
     const renderedPrompt = renderPrompt(assembly)
     let firstAttempt = true
     while (true) {
+      // An automatic compaction during the preceding pre-step (or a recovered
+      // context overflow inside this step's request-error waterfall) leaves a
+      // recovery point: inject a review notice before the next model call so
+      // the model re-grounds on the summary instead of ending prematurely.
+      if (this.compactionPending) {
+        this.compactionPending = false
+        this.session.append('user/message', createUserMessage({
+          content: [{
+            type: 'text',
+            text: '(System) The context was just automatically compacted. Cross-check the compaction summary for unfinished work and todo items and continue executing; explicitly mark completed items and do not end the turn early based on the summary alone.',
+          }],
+          source: AGENT_LOOP_NOTICE_SOURCE,
+        }), { surfaceOp: 'append' })
+      }
       const { config, preparedCall } = await this.prepareRequest(turn, step, signal)
       const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true
       const commits = this.systemPrompt.project(renderedPrompt, {
@@ -527,6 +719,17 @@ export class ReactLoopAgent implements Agent {
         const degenerateReason = degenerateOutputReason(message.content)
         if (degenerateReason !== undefined) {
           live.abandon()
+          // Surface an intervention notice before the retry so the regenerated
+          // request carries explicit guidance instead of looping the same
+          // degenerate text. The request-error pipeline still decides whether
+          // to retry (DEGENERATE_OUTPUT is retryable by default).
+          this.session.append('user/message', createUserMessage({
+            content: [{
+              type: 'text',
+              text: '(System) Your previous output was classified as degenerate (repeated fragments with no progress). Regenerate it as concise, forward-moving text: no repetition, no filler — either call a tool or give the final answer directly.',
+            }],
+            source: AGENT_LOOP_NOTICE_SOURCE,
+          }), { surfaceOp: 'append' })
           const action = await this.dispatch.waterfall(
             'agent/request-error', {
               turn,
@@ -544,6 +747,52 @@ export class ReactLoopAgent implements Agent {
           }
           continue
         }
+        const toolCalls = message.content.filter(block => block.type === 'tool-call')
+        // A text-only completion that leaves unfinished todos is a premature
+        // wrap-up (common right after compaction): abandon the text so it never
+        // pollutes the log, surface a notice as user input, and let the model
+        // continue or explicitly mark the todos completed.
+        if (toolCalls.length === 0
+          && finish.kind !== 'max-tokens'
+          && this.lastTodoWrite !== null
+          && this.lastTodoWrite.todos.length > 0
+          && this.todoGuardCount < TODO_GUARD_LIMIT) {
+          this.todoGuardCount += 1
+          live.abandon()
+          this.session.append('user/message', createUserMessage({
+            content: [{
+              type: 'text',
+              text: '(System) The session log still contains unfinished todo items. If you were answering the user directly and the reply is complete, explicitly mark those items completed with the todo tool before ending; otherwise keep executing the unfinished todos instead of ending the turn early.',
+            }],
+            source: AGENT_LOOP_NOTICE_SOURCE,
+          }), { surfaceOp: 'append' })
+          continue
+        }
+        // A text-only reply that repeats the same paragraph many times is a
+        // degenerate loop (observed in the wild: ~475 repetitions of one
+        // sentence with no tool call while the model claims it will "read the
+        // usage"). The line-level DEGENERATE_OUTPUT classifier misses this
+        // shape because each repetition is a long line, so catch it here:
+        // abandon the text, surface an intervention notice telling the model it
+        // is looping, and let it regenerate under guidance.
+        const repetition = textRepetitionReason(message.content)
+        if (toolCalls.length === 0
+          && finish.kind !== 'max-tokens'
+          && repetition !== undefined
+          && this.repetitionGuardCount < REPETITION_GUARD_LIMIT) {
+          this.repetitionGuardCount += 1
+          live.abandon()
+          this.session.append('user/message', createUserMessage({
+            content: [{
+              type: 'text',
+              text: `(System) Your last message repeated "${repetition.fragment}" ${repetition.count} times with no tool call — a degenerate loop. Stop repeating the same sentence: either call a tool to make concrete progress, or finish your turn with a concise final answer.`,
+            }],
+            source: AGENT_LOOP_NOTICE_SOURCE,
+          }), { surfaceOp: 'append' })
+          continue
+        }
+        this.todoGuardCount = 0
+        this.repetitionGuardCount = 0
         live.settle(
           'assistant/message',
           () => this.session.append('assistant/message', {
@@ -555,8 +804,6 @@ export class ReactLoopAgent implements Agent {
           }, { surfaceOp: 'append' }).seq,
         )
         if (finish.kind === 'max-tokens') return { kind: 'max-tokens' }
-
-        const toolCalls = message.content.filter(block => block.type === 'tool-call')
         if (toolCalls.length === 0) return { kind: 'completed' }
         const { concluded } = await executeToolCalls(
           this.loopCtx, turn, step, toolCalls, signal,
