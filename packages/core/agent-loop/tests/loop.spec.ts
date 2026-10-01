@@ -10,7 +10,7 @@ import AgentRegistry, { type Agent, type AssistantStreamFrame } from '@deepseek-
 
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from './mock-adapter.ts'
+import { MockAdapter, degenerateReasoningResponse, degenerateTextResponse, maxTokensResponse, textResponse, toolCallResponse, truncatedToolCallResponse } from './mock-adapter.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -206,6 +206,133 @@ describe('agent loop', () => {
     expect(frames.filter(frame => frame.type === 'end').map(frame => (
       frame.outcome.kind === 'committed' ? frame.outcome.eventType : frame.outcome.kind
     ))).toEqual(['assistant/attempt', 'assistant/message'])
+  })
+
+  it('rejects degenerate output before persisting and retries to a real answer', async () => {
+    const ctx = await harness(new MockAdapter([degenerateReasoningResponse(200), textResponse('recovered')]))
+    const agent = await ctx.agentLoop.create(SessionId('degenerate-retry'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const failures: Array<{ code: string; message: string }> = []
+    ctx.on('agent/request-error', async ({ failure }) => {
+      failures.push({ code: failure.code, message: failure.message })
+      return { kind: 'retry' as const }
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // The degenerate attempt must never reach the durable log.
+    const messages = agent.session.snapshotEvents().filter(event => event.type === 'assistant/message')
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?.type === 'assistant/message' ? messages[0].data.message.content : undefined)
+      .toEqual([{ type: 'text', text: 'recovered' }])
+    // The failure surfaced through the request-error pipeline with our code.
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.code).toBe('DEGENERATE_OUTPUT')
+    expect(failures[0]?.message).toMatch(/degenerate output/)
+    // The turn completed normally after the retried answer.
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'completed' } },
+    })
+  })
+
+  it('ends the turn with a visible error when degenerate output cannot be retried', async () => {
+    const ctx = await harness(new MockAdapter([degenerateReasoningResponse(200)]))
+    const agent = await ctx.agentLoop.create(SessionId('degenerate-terminal'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // No garbage persisted at all.
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'assistant/message')).toHaveLength(0)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'assistant/attempt')).toHaveLength(0)
+    // The turn ends with an explicit error carrying the DEGENERATE_OUTPUT code.
+    const end = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    expect(end?.type === 'turn/end' ? end.data.reason : undefined).toMatchObject({
+      kind: 'error',
+      error: { code: 'DEGENERATE_OUTPUT' },
+    })
+  })
+
+  it('rejects a degenerate visible-text loop even when a tool call follows, then retries', async () => {
+    // Second-wave regression: the loop is emitted as visible text (`OK.` /
+    // `Go.` / `Let me issue.`) with a pseudo-progress `job_output` tool call.
+    // The first guard (text ⇒ deliverable, tool call ⇒ progress) persisted
+    // this garbage; the current guard must reject it and retry instead.
+    const ctx = await harness(new MockAdapter([degenerateTextResponse(184), textResponse('recovered')]))
+    const agent = await ctx.agentLoop.create(SessionId('degenerate-text-retry'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const failures: Array<{ code: string; message: string }> = []
+    ctx.on('agent/request-error', async ({ failure }) => {
+      failures.push({ code: failure.code, message: failure.message })
+      return { kind: 'retry' as const }
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // Only the retried answer reaches the durable log — the degenerate text
+    // block (with its tool call) is discarded, never persisted.
+    const messages = agent.session.snapshotEvents().filter(event => event.type === 'assistant/message')
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?.type === 'assistant/message' ? messages[0].data.message.content : undefined)
+      .toEqual([{ type: 'text', text: 'recovered' }])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.code).toBe('DEGENERATE_OUTPUT')
+    expect(failures[0]?.message).toMatch(/degenerate output/)
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'completed' } },
+    })
+  })
+
+  it('rejects a truncated tool call (empty id/name) before persisting, then retries', async () => {
+    // Fourth-wave regression: the provider stream ends mid-invocation, pi-ai
+    // still reports stopReason=toolUse, and the assembled tool-call block has
+    // id:""/name:"". Executing it would persist tool/call callId:"" and a
+    // tool/result whose empty toolCallId fails session format v4 admission
+    // (`requires toolCallId matching its tool source`), crashing the run.
+    const ctx = await harness(new MockAdapter([
+      truncatedToolCallResponse(),
+      textResponse('recovered'),
+    ]))
+    const agent = await ctx.agentLoop.create(SessionId('truncated-tool-call-retry'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const failures: Array<{ code: string; message: string }> = []
+    ctx.on('agent/request-error', async ({ failure }) => {
+      failures.push({ code: failure.code, message: failure.message })
+      return { kind: 'retry' as const }
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // Nothing from the truncated attempt reaches the durable log: no
+    // assistant/message, no tool/call, no tool/result.
+    const events = agent.session.snapshotEvents()
+    expect(events.filter(event => event.type === 'assistant/message')).toHaveLength(1)
+    expect(events.filter(event => event.type === 'tool/call')).toHaveLength(0)
+    expect(events.filter(event => event.type === 'tool/result')).toHaveLength(0)
+    const persisted = events.find(event => event.type === 'assistant/message')
+    expect(persisted?.type === 'assistant/message' ? persisted.data.message.content : undefined)
+      .toEqual([{ type: 'text', text: 'recovered' }])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.code).toBe('DEGENERATE_OUTPUT')
+    expect(failures[0]?.message).toMatch(/empty id/)
+    expect(events.at(-1)).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'completed' } },
+    })
   })
 
   it('does not emit an end frame when prepared dispatch throws before start', async () => {
