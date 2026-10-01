@@ -642,11 +642,33 @@ export class ReactLoopAgent implements Agent {
           if (signal.aborted) {
             const content = live.interruptedBlocks()
             if (content.length > 0) {
+              // Abort salvage persists whatever the model produced before the
+              // user stopped the stream, and this path bypasses the
+              // degenerate/repetition guards that only run after a clean
+              // finish. A model stuck in a repetition loop therefore dumped
+              // hundreds of repeated paragraphs into the log on abort (c079
+              // seq 1090: "Critical context found. Re-running gates under
+              // git-bash:" x94). Run the same detectors on the salvage and
+              // replace degenerate content with a short notice so the loop
+              // cannot pollute the session log through the abort path either.
+              const degenerateReason = degenerateOutputReason(content)
+              const repetition = textRepetitionReason(content)
+              let suppressed: string | undefined
+              if (degenerateReason !== undefined) {
+                suppressed = degenerateReason
+              } else if (repetition !== undefined) {
+                suppressed = `repeated "${repetition.fragment}" ${repetition.count} times with no tool call`
+              }
               live.settle('assistant/message', () => this.session.append('assistant/message', {
                 turn,
                 step,
                 message: createAssistantMessage({
-                  content,
+                  content: suppressed === undefined
+                    ? content
+                    : [{
+                      type: 'text',
+                      text: `(interrupted output suppressed — ${suppressed})`,
+                    }],
                   source: {
                     provider: request.provider,
                     model: request.model,

@@ -1149,4 +1149,45 @@ describe('Agent.cancel()', () => {
       .toEqual({ kind: 'aborted', reason: { kind: 'user' } })
     await ctx.fiber.dispose()
   })
+
+  it('abort salvage suppresses degenerate interrupted output instead of persisting it', async () => {
+    // The model streams a long repetition loop (94 identical paragraphs) and
+    // then hangs; the user stops it mid-stream. The abort salvage path used to
+    // persist the interrupted blocks verbatim, bypassing the degenerate and
+    // repetition guards that only run after a clean finish — so a stuck loop
+    // dumped hundreds of repeated paragraphs into the log (c079 seq 1090:
+    // "Critical context found. Re-running gates under git-bash:" x94). The
+    // salvage must run the same detectors and replace degenerate content with
+    // a short notice instead.
+    const repeated = 'Critical context found. Re-running gates under git-bash:'
+    const lines = Array.from({ length: 94 }, () => repeated).join('\n')
+    const adapter = new MockAdapter([{
+      hangAfter: [
+        { type: 'block-start', index: 0, blockType: 'text' },
+        { type: 'text-delta', index: 0, text: lines },
+        { type: 'block-end', index: 0, block: { type: 'text', text: lines } },
+      ],
+    }])
+    const ctx = await harness(adapter)
+    try {
+      const agent = await ctx.agentLoop.create(SessionId('abort-suppresses-degenerate'), { provider: 'mock', model: 'mock' })
+
+      send(agent, 'go')
+      await new Promise(resolve => setTimeout(resolve, 30))
+      agent.cancel({ kind: 'user' })
+      await waitForIdle(ctx, agent)
+
+      const message = agent.session.snapshotEvents().find(event => event.type === 'assistant/message')
+      expect(message?.type === 'assistant/message' ? message.data.message.content : undefined)
+        .toEqual([{ type: 'text', text: expect.stringMatching(/^\(interrupted output suppressed — degenerate output:/) }])
+      expect(message?.type === 'assistant/message' ? message.data.interrupted : undefined).toBe(true)
+      // The repeated paragraphs themselves never reach the log.
+      expect(agent.session.snapshotEvents()
+        .some(event => event.type === 'assistant/message'
+          && JSON.stringify(event.data.message.content).includes('Critical context found. Re-running gates under git-bash:')))
+        .toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
 })
