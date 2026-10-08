@@ -881,14 +881,25 @@ describe('mapStopReason / mapUsage', () => {
     expect(mapStopReason(assistant({ stopReason: 'stop' }))).toEqual({
       kind: 'error',
       failure: {
-        message: 'model "deepseek-v4-flash" returned a completed response with no content',
+        message: 'model "deepseek-v4-flash" returned a completed response with no visible content',
         code: EMPTY_RESPONSE_CODE,
       },
     })
   })
 
-  it('keeps a thinking-only stop successful (any block counts as content)', () => {
+  it('classifies a thinking-only or empty-text stop as an EMPTY_RESPONSE error', () => {
+    // Reasoning with no user-facing text (or an empty text block) is a degenerate
+    // completion, not a successful (empty) assistant message.
     expect(mapStopReason(assistant({ stopReason: 'stop', content: [{ type: 'thinking', thinking: 'mull' }] })))
+      .toEqual({ kind: 'error', failure: { message: 'model "deepseek-v4-flash" returned a completed response with no visible content', code: EMPTY_RESPONSE_CODE } })
+    expect(mapStopReason(assistant({ stopReason: 'stop', content: [{ type: 'thinking', thinking: 'mull' }, { type: 'text', text: '' }] })))
+      .toEqual({ kind: 'error', failure: { message: 'model "deepseek-v4-flash" returned a completed response with no visible content', code: EMPTY_RESPONSE_CODE } })
+  })
+
+  it('keeps a text or tool-call stop successful', () => {
+    expect(mapStopReason(assistant({ stopReason: 'stop', content: [{ type: 'thinking', thinking: 'mull' }, { type: 'text', text: 'answer' }] })))
+      .toEqual({ kind: 'stop' })
+    expect(mapStopReason(assistant({ stopReason: 'stop', content: [{ type: 'toolCall', id: 't1', name: 'read', arguments: {} }] })))
       .toEqual({ kind: 'stop' })
   })
 

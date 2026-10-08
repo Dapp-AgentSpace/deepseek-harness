@@ -1,0 +1,61 @@
+# 门禁注册表 —— 门禁「身份」的单源（key/名称/类型/退出码/执行器/开关）。
+# 从它读身份：harness-gate.sh（跑）、identity.yaml（gates.* 开关）、harness-scaffold.sh（接线）、
+# ci/README.md（视图）、closed-loop-audit.sh（对账）。改名/加门禁只改这里。
+# 类型：deterministic=确定性（无 AI，CI 脚本，执行器=harness-gate.sh 内 g_<key> 函数）；
+#       judge=判断类（LLM-as-judge，走 judge-review.sh，runner 绑定见 identity.yaml judge.nodes）。
+# 确定性门禁退出码契约统一：0=绿 / 1=红 / 2=黄(未配置/需人工)。
+# binding + on_ramp（取代原 tier 两档套餐）：企业铁律强制、流程按需，两轴分开。
+#   - binding: true  = 铁律，永远强制跑，任何风险档/降级都关不掉（确定性门禁均为铁律）；
+#   - binding: false = 流程，按 on_ramp 触发（judge 节点）：
+#       on_ramp: light = 轻风险（纯实现/bug 修）也开 —— 默认审查；
+#       on_ramp: full  = 仅触碰契约信号（重风险）才开。
+#   风险档由 ci/bin/harness-tier.sh 从 diff 确定性嗅探（full=触碰契约/接口/数据模型/依赖，light=纯实现）。
+gates:
+  - key: static
+    name: 静态检查
+    type: deterministic
+    switch: gates.static
+    binding: true
+  - key: pitfall
+    name: 坑库
+    type: deterministic
+    switch: gates.pitfall
+    binding: true
+  - key: schema
+    name: Schema
+    type: deterministic
+    switch: gates.schema
+    binding: true
+  - key: dep
+    name: 依赖安全
+    type: deterministic
+    switch: gates.dep
+    binding: true
+  - key: compat
+    name: 兼容性
+    type: deterministic
+    switch: gates.compat
+    binding: true
+  - key: audit
+    name: 对账
+    type: deterministic
+    switch: gates.audit
+    binding: true
+  - key: review
+    name: 审查节点
+    type: judge
+    runner: judge-review.sh diff|arch → ocr
+    binding: false
+    on_ramp: light
+  - key: contract
+    name: 契约节点
+    type: judge
+    runner: judge-review.sh audit → claude
+    binding: false
+    on_ramp: full
+  - key: quality
+    name: 质量验证节点
+    type: judge
+    runner: judge-review.sh quality → traecli/回退 claude
+    binding: false
+    on_ramp: full

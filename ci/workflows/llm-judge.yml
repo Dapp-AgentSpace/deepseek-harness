@@ -1,0 +1,31 @@
+name: harness-llm-judge
+
+# LLM-as-judge：无头 agent 评审 TSD/测试/代码/依赖 + 声明≠落盘对账 + arch 漂移。
+# 确定性门禁在 quality-gates.yml；这里只做判断类评审。
+
+on:
+  pull_request:
+  # 定时暂未注册：schedule 已移除，待之后再挂 cron（例如每周一 `17 3 * * 1`）。arch 漂移当前走手动 workflow_dispatch。
+  workflow_dispatch: {}
+
+jobs:
+  judge:
+    runs-on: ubuntu-latest
+    env:
+      # 旗舰版专属；拿不到就把 identity.yaml 的 judge.nodes.quality 退到 opencode/api
+      TRAECLI_PERSONAL_ACCESS_TOKEN: ${{ secrets.TRAECLI_PERSONAL_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: LLM-as-judge 评审（diff）
+        if: github.event_name == 'pull_request'
+        run: |
+          chmod +x ci/bin/*.sh
+          ./ci/bin/judge-review.sh diff
+
+      - name: LLM-as-judge arch 漂移（手动）
+        if: github.event_name == 'workflow_dispatch'
+        # --depgraph：把 tree-sitter 模块依赖图注入当导航（ADR-0006）；大仓才需要装 tree-sitter
+        run: ./ci/bin/judge-review.sh arch --depgraph

@@ -237,3 +237,65 @@ describe('disposal releases recorded state (HMR safety)', () => {
     expect(await writeIntent(ctx, target('a.txt'), ownerExec({}))).toBeUndefined()
   })
 })
+
+describe('fs/observed-query (read-only guard input)', () => {
+  /** Dispatch the read-only query with the bare default thunk. */
+  function observedQuery(
+    ctx: Context,
+    t: FsTarget,
+    actor: object | undefined,
+  ): Promise<FsObservation | undefined> {
+    return ctx.waterfall('fs/observed-query', t, actor, () => undefined)
+  }
+
+  it('answers with the recorded observation for the same owner and target', async () => {
+    const { ctx } = await setup()
+    const exec = ownerExec({})
+    ctx.emit('fs/observed', target('a.txt'), present('v7'), exec)
+    expect(await observedQuery(ctx, target('a.txt'), exec)).toEqual(present('v7'))
+  })
+
+  it('answers absent for a confirmed-absent target (absence is recorded state)', async () => {
+    const { ctx } = await setup()
+    const exec = ownerExec({})
+    ctx.emit('fs/observed', target('a.txt'), absent, exec)
+    expect(await observedQuery(ctx, target('a.txt'), exec)).toEqual(absent)
+  })
+
+  it('falls through (undefined) for a target the owner never observed', async () => {
+    const { ctx } = await setup()
+    const exec = ownerExec({})
+    ctx.emit('fs/observed', target('a.txt'), present('v1'), exec)
+    expect(await observedQuery(ctx, target('b.txt'), exec)).toBeUndefined()
+  })
+
+  it('does not leak one owner state to a foreign owner (owner isolation)', async () => {
+    const { ctx } = await setup()
+    const ownerA = ownerExec({})
+    const ownerB = ownerExec({})
+    ctx.emit('fs/observed', target('a.txt'), present('v0'), ownerA)
+    expect(await observedQuery(ctx, target('a.txt'), ownerB)).toBeUndefined()
+    expect(await observedQuery(ctx, target('a.txt'), ownerA)).toEqual(present('v0'))
+  })
+
+  it('answers undefined for a no-owner actor', async () => {
+    const { ctx } = await setup()
+    const exec = ownerExec({})
+    ctx.emit('fs/observed', target('a.txt'), present('v1'), exec)
+    expect(await observedQuery(ctx, target('a.txt'), undefined)).toBeUndefined()
+    expect(await observedQuery(ctx, target('a.txt'), {})).toBeUndefined()
+  })
+
+  it('falls through to the bare default when the gate holds nothing', async () => {
+    const { ctx } = await setup()
+    expect(await observedQuery(ctx, target('a.txt'), ownerExec({}))).toBeUndefined()
+  })
+
+  it('is read-only: a query records no observation of its own', async () => {
+    const { ctx } = await setup()
+    const exec = ownerExec({})
+    expect(await observedQuery(ctx, target('a.txt'), exec)).toBeUndefined()
+    // The query must not have made the target writable: an edit still needs a read.
+    await expect(editIntent(ctx, target('a.txt'), exec)).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
+  })
+})

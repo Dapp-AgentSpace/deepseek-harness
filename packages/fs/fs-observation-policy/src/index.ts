@@ -25,7 +25,7 @@ class ObservedStateGate {
    * entry's presence is the prior-observation record; its discriminant keeps
    * confirmed absence distinct from an unseen target.
    */
-  private observed = new WeakMap<object, Map<string, FsObservation>>()
+  private byOwner = new WeakMap<object, Map<string, FsObservation>>()
 
   /**
    * Derive the observed-state owner from the opaque event actor — normally the
@@ -36,26 +36,25 @@ class ObservedStateGate {
   private owner(actor: object | undefined): object | undefined {
     // tsgolint treats object as assignable to weak FsObservationActor, while tsc still requires the structural cast for property access.
     // See the analyzer-divergence consequence in .agents/notes/archived/process/2026-07-29-oxlint-linter.md.
-    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- The analyzers disagree on this weak type.
     return (actor as FsObservationActor | undefined)?.agent?.session
   }
 
   private get(owner: object, targetKey: string): FsObservation | undefined {
-    return this.observed.get(owner)?.get(targetKey)
+    return this.byOwner.get(owner)?.get(targetKey)
   }
 
   private set(owner: object, targetKey: string, observation: FsObservation): void {
-    let byTarget = this.observed.get(owner)
+    let byTarget = this.byOwner.get(owner)
     if (!byTarget) {
       byTarget = new Map()
-      this.observed.set(owner, byTarget)
+      this.byOwner.set(owner, byTarget)
     }
     byTarget.set(targetKey, observation)
   }
 
   /** Drop all recorded state (HMR safety / disposal). */
   clear(): void {
-    this.observed = new WeakMap()
+    this.byOwner = new WeakMap()
   }
 
   /**
@@ -92,6 +91,19 @@ class ObservedStateGate {
     const owner = this.owner(actor)
     if (owner) this.set(owner, target.targetKey, observation)
   }
+
+  /**
+   * Read the current observation for this owner and target, or `undefined` when
+   * the policy holds none. Pure query — never records, never throws — so a
+   * guard (the agent-loop action guard deciding whether a retry is a remedy)
+   * can consult it without side effects. `undefined` is ambiguous between "no
+   * owner" and "no observation"; both mean the policy cannot vouch for the
+   * target.
+   */
+  observed(target: FsTarget, actor: object | undefined): FsObservation | undefined {
+    const owner = this.owner(actor)
+    return owner ? this.get(owner, target.targetKey) : undefined
+  }
 }
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -127,4 +139,9 @@ export function apply(ctx: Context): void {
   ctx.on('fs/observed', (target, observation, actor) => {
     gate.observe(target, observation, actor)
   })
+
+  // fs/observed-query: pure state read; fall through (next()) only when the
+  // gate holds nothing, so non-policy deployments and foreign owners yield
+  // undefined rather than an invented observation.
+  ctx.on('fs/observed-query', (target, actor, next) => Promise.resolve().then(() => gate.observed(target, actor) ?? next()))
 }

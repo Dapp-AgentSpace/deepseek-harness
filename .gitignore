@@ -46,3 +46,17 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+
+# ---- harness 运行时产物（harness-suite 约定）----
+# .harness/ 下的 identity.yaml / attention.md / checklists/ / contracts/ 是语义层，入库；
+# 以下为本机/运行时产物，不入库。
+.harness/work/
+.harness/.scaffold-state
+.harness/toolchain.env
+.harness/env.local
+.harness/reports/*.json
+.harness/reports/*.jsonl
+.harness/reports/*.err
+.harness/reports/*.log
+.harness/reports/*.html
+.harness/reports/*-last.md

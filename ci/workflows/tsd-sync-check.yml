@@ -1,0 +1,21 @@
+name: harness-tsd-sync-check
+
+# TSD 变更检测兜底（ADR-0004 决策5）：定时扫冻结 TSD 的 work/epic 哈希是否漂移。
+# 主触发是 harness-run 开工前的自动门禁；这里是兜底 sweep（本地跑 → 系统通知，CI → 失败邮件/issue）。
+# stale（work/epic 已变更）→ 脚本非零退出让工作流失败 → GitHub 通知 owner 建议 re-plan；
+# 数据不全（旧 TSD 缺 work_sha）→ 同样非零，提示 owner re-plan 记账。只检测、不自动 re-plan。
+
+on:
+  # 定时暂未注册：schedule 已移除，待之后再挂 cron（例如每天 `47 6 * * *`）。当前仅手动 workflow_dispatch 触发。
+  workflow_dispatch: {}
+
+jobs:
+  tsd-sync-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: TSD 变更检测（只检测，stale 失败通知，不自动 re-plan）
+        run: |
+          chmod +x ci/bin/*.sh
+          ./ci/bin/harness-tsd-sync-check.sh

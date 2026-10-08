@@ -1,0 +1,32 @@
+name: harness-runtime-check
+
+# 运行回路（定时 · 只读）：对线上日志/数据校验业务不变量。
+# 输入 = 写时埋点的结构化日志 + 核心数据（见各 TSD「可观测性/日志契约」）；
+# 不是静态反模式扫描（那是 quality-gates.yml 的职责），是业务行为校验。
+# 发现偏差 → 脚本调 ci/bin/harness-runtime-issue.sh 落 .harness/work/{slug}.md（追踪）
+# + 非零退出让工作流失败 → GitHub 通知 owner。绝不直接改线上。
+
+on:
+  # 定时暂未注册：schedule 已移除，待之后再挂 cron（例如每天 `23 5 * * *`）。当前仅手动 workflow_dispatch 触发。
+  workflow_dispatch:
+
+jobs:
+  runtime-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 配置与凭据来源（方向 B，脚本内不硬编码）：
+      #   HARNESS_DATA_TOKEN —— 唯一 CI 机密：只读 token（repo → Settings → Secrets）。
+      #   其余配置在仓库内 `.harness/`：env.yaml（env.data.* endpoint/header/auth_scheme/
+      #   extra_headers/白名单）单源 + runtime-config.yaml（每域 endpoint_path/collection_name/
+      #   conditions + subject_key/account_id_key）+ runtime-subjects.yaml（依赖数据值）；由 harness-runtime-check.sh 读配执行。
+      - name: 运行回路 · 业务不变量校验（只读）
+        env:
+          HARNESS_DATA_TOKEN: ${{ secrets.HARNESS_DATA_TOKEN }}
+        run: bash ci/bin/harness-runtime-check.sh
+
+      # 度量报表（优化 #1）：聚合运行回路 issue 终局 / 坑库命中 / checklist 消费 → measure.html。
+      # 只读；输入文件（.harness/work、.harness/reports）需随仓库持久化，否则只反映本次运行。
+      - name: 生成度量报表（HTML）
+        run: bash ci/bin/harness-measure.sh

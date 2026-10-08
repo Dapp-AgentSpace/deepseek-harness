@@ -1,0 +1,50 @@
+# 项目独立标识 —— harness 所有产出的文件名与 YAML 头部必须携带 project.id
+# 本文件由 `harness-init` 生成；project.id 一旦确定不得更改（它是跨项目去重的锚点）。
+project:
+  id: "deepseek-harness"        # 唯一 slug：小写字母/数字/连字符，跨项目唯一
+  name: "DeepSeek Harness"
+  org: "Dapp-AgentSpace"
+  owner: ""                     # 唯一被授权确认 baseline 锚的人类身份（ADR-0015 决策 3）；agent 不得代替确认
+  traits: "stack:ts stack:py stack:shell"  # 空格分隔标签（如 stack:maven domain:order），供 shared checklist 的 applies_to 匹配；缺省回退 harness-stack.sh 探测的 stack
+
+# 共享 checklist 来源（跨项目复用）。公约源 = suite 仓库的 checklists/shared/（+ ci/rules/pitfalls.yaml）；
+# shared_store 指向本地 shared 目录，loader（harness-checklist-ls.sh）从这里读 shared 项。
+# 本机有 suite checkout（D:\code\harness\harness-suite）时直接指其 checklists/shared 以获得 git 刷新。
+checklist:
+  shared_store: "D:/code/harness/harness-suite/checklists/shared"
+
+# 本机环境需求（committed 单源）。harness-preflight.sh 读这里解析工具真实路径，写
+# .harness/toolchain.env（本机缓存，不入库）。required 缺失即阻断流程；optional 缺失仅告警。
+# 与 attention.md 的分工：attention.md 是项目通用事实；这里只声明「需要哪些工具」，路径解析结果才是本机的。
+toolchain:
+  required: [python3, git]
+  optional: [jq, semgrep, trivy, ocr]
+
+# 确定性门禁开关（CI 权威门禁读这里）。此处是模板默认值，`harness-scaffold.sh` 会按栈探测重写：
+# 能真实接线的置 true，无法安全自动生成的置 false。架构契约是判断类，不在此处——
+# 由 LLM-as-judge 执行（judge.nodes.review → judge-review.sh arch / ocr scan）。
+gates:
+  static: true
+  pitfall: true
+  schema: false
+  dep: true
+  compat: true
+  audit: true
+
+# LLM-as-judge 配置：三个独立判断节点，各自绑定 runner，可并行独立执行（非多选一）。
+# 节点语义：review=审查(diff/tsd/report/arch 漂移) / contract=契约检查(声明≠落盘对账) /
+#          quality=质量验证(元治理：门禁真实性/checklist 有效性/运行时契约可执行/闭环完整性)。
+judge:
+  nodes:
+    review: "ocr"      # 审查节点 → open-code-review（本地，默认可用）
+    contract: "claude" # 契约检查节点 → Claude Code CLI
+    quality: "claude"  # 质量验证节点（元治理）→ Claude Code CLI（本机 traecli 未安装且无 token，按注释「无 token 时回退 claude」直接落 claude，避免走裸 claude -p 无 --model 的失败路径）
+  provider: ""    # runner=ocr 时透传 --provider（如自定义 provider 的 slug）；留空用 OCR 默认 active provider
+  model: "claude-sonnet-4-5-20250929"  # runner=claude 时指定模型（本机经 model.maiforce.com 网关，留空走 ~/.claude/settings.json 的 sonnet[1m] 会解析成不可用的 claude-sonnet-5-5[1m]）
+  max_rounds: 3   # 同一判断阶段累计最多轮次
+  depgraph_stack: ""        # 覆盖栈探测；留空 = 自动多栈推导（stack_detect_all，多模块/非常规 src-layout 才需填）
+  depgraph_module_root: ""  # 覆盖 module_root，相对仓库根（如 backend/src/main/java）；留空 = 自动推导
+
+# 自动接力（harness-run）回修上限：整链 build→verify→review 红就回修，超过即转人工
+flow:
+  max_fix_rounds: 15    # 累计回修次数；「红→回 build 重跑」算一轮（定义见 skills/harness-run）

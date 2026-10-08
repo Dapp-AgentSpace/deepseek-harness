@@ -50,6 +50,7 @@ import type {
   ContinuableStartSpec,
   SubagentInterruptAuthority,
   SubagentSendMessageOptions,
+  SubagentWaitOutcome,
 } from './types.ts'
 
 /** Inputs shared by model steering and human prompt delivery. */
@@ -231,6 +232,16 @@ export class SubagentContinuationManager {
       signal: options.signal,
       delivery: 'steer',
     })
+  }
+
+  /**
+   * Wait up to `timeoutMs` for one resident continuable child to settle. A
+   * non-resident child is reported settled immediately with an `'inactive'`
+   * projection; a budget that elapses returns the live projection instead of
+   * throwing (`jobs.wait` parity).
+   */
+  async waitSettlement(childId: SessionId, timeoutMs: number, signal?: AbortSignal): Promise<SubagentWaitOutcome> {
+    return this.activations.waitSettlement(childId, timeoutMs, signal)
   }
 
   /**

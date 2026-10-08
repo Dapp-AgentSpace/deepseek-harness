@@ -137,11 +137,12 @@ export interface HangAfter {
 
 /**
  * Mock adapter driven by a script: each model call consumes the next entry.
- * Records every request it receives for assertions. An entry may be a
- * function to compute chunks from the request, a 'hang' marker that
- * streams one chunk then waits until aborted, 'hang-slow' which takes
- * 50ms to notice the abort — a stand-in for slow real-world teardown
- * (LLM stream cancellation, tool unwinding) — or a {@link HangAfter}
+ * An entry may be a function to compute chunks from the request, a 'hang'
+ * marker that streams one chunk then waits until aborted, 'hang-slow' which
+ * takes 50ms to notice the abort — a stand-in for slow real-world teardown
+ * (LLM stream cancellation, tool unwinding) — a 'stall' marker that streams a
+ * single text block forever (progressing but never finishing, so only the
+ * streaming wall-clock hard limit can end it), or a {@link HangAfter}
  * scripting the exact chunks delivered before the hang.
  */
 export class MockAdapter extends LlmAdapter {
@@ -152,7 +153,7 @@ export class MockAdapter extends LlmAdapter {
   toolUpdate?: ToolUpdate
 
   constructor(
-    private script: (StreamChunk[] | ((options: GenerateOptions) => StreamChunk[]) | 'hang' | 'hang-slow' | HangAfter)[],
+    private script: (StreamChunk[] | ((options: GenerateOptions) => StreamChunk[]) | 'hang' | 'hang-slow' | 'stall' | HangAfter)[],
     private readonly reasoning?: LlmModelReasoningInfo,
     private readonly defaultMaxTokens?: number,
   ) {
@@ -204,6 +205,20 @@ export class MockAdapter extends LlmAdapter {
         options.signal?.addEventListener('abort', () => { setTimeout(fail, 50) }, { once: true })
       })
       return
+    }
+    // Endless-but-progressing stream: a text-delta every few milliseconds in a
+    // single text block. It never trips the repetition/degenerate detectors
+    // (one line, one paragraph), so only the streaming wall-clock hard limit
+    // can end it — the shape of a model that streams novel-looking text
+    // forever. Iterating stops as soon as the consumer breaks (the generator
+    // terminates at its next yield), so no handle leaks.
+    if (entry === 'stall') {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+        if (options.signal?.aborted) throw new Error('aborted')
+        yield { type: 'text-delta', index: 0, text: 'x' }
+      }
     }
     const chunks = typeof entry === 'function' ? entry(options) : entry
     for (const chunk of chunks) {

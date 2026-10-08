@@ -1,0 +1,30 @@
+# harness 坑库— 共享结构化反模式规则（Semgrep）。
+#
+# 两段式定位（ADR-0001 准确读法：可被确定性工具可靠判定的不进 agent）：
+#   - 结构/形状类反模式 → 本文件（Semgrep 确定性，AST 级匹配，非字面 grep）；
+#   - 语义类反模式 → shared checklist 自然语言规则 → review 节点 LLM-as-judge（judge-review.sh）。
+# 每条 rule.id 对齐 checklist id（LOG-001/LOG-002/HOG-001），供 closed-loop-audit 做 checklist↔坑库对账。
+# 运行：semgrep scan --config ci/rules/pitfalls.yaml <repo>；退出码 0=无命中 / 1=有命中 / 2=出错。
+rules:
+  # LOG-001：业务日志禁 System.out/err —— metavariable $PRINT 一次盖住 println/print/printf
+  - id: harness-log-001-system-out
+    languages: [java]
+    message: "LOG-001: 业务日志禁止 System.out/err，统一 log.info(\"msg\", key, value)"
+    severity: ERROR
+    pattern-either:
+      - pattern: System.out.$PRINT(...)
+      - pattern: System.err.$PRINT(...)
+
+  # LOG-002：禁 printStackTrace —— $E 匹配任意 receiver
+  - id: harness-log-002-print-stacktrace
+    languages: [java]
+    message: "LOG-002: 异常日志禁止 printStackTrace，记录异常对象与关键入参"
+    severity: ERROR
+    pattern: $E.printStackTrace(...)
+
+  # HOG-001：禁 eval 拼接命令 —— $CMD 匹配 eval 实参（Semgrep bash 为 beta，shell 语义兜底走 review 节点）
+  - id: harness-hog-001-eval
+    languages: [bash]
+    message: "HOG-001: 禁止 eval 拼接命令，用函数或受控常量"
+    severity: ERROR
+    pattern: eval $CMD

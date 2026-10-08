@@ -64,6 +64,7 @@ import type {
   SubagentRunInfo,
   SubagentSendMessageOptions,
   SubagentStartRequest,
+  SubagentWaitOutcome,
 } from './types.ts'
 import { SubagentError } from './error.ts'
 import { assertSubagentMaxDepth } from './depth.ts'
@@ -132,6 +133,7 @@ export type { AgentMessageSource, SubagentSettledMessageSource } from './continu
 export type * from './control-types.ts'
 export type { SubagentDescendantListEntry } from './list-children.ts'
 export type { SubagentRunEndInfo, SubagentRunInfo } from './types.ts'
+export type { SubagentWaitOutcome, SubagentWaitProjection } from './types.ts'
 export type { SubagentIdentityProjection, SubagentTimingProjection } from './projection-types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -260,6 +262,27 @@ export class SubagentRuntime extends TypertRemoteService {
    */
   async startContinuable(spec: ContinuableStartSpec): Promise<ContinuableStart> {
     return this.requireContinuations().startContinuable(spec)
+  }
+
+  /**
+   * Wait up to `timeoutMs` for one durable continuable child to settle, or
+   * observe its current projection when it is not resident. Mirrors `jobs.wait`
+   * semantics: a budget that elapses or caller cancellation resolves with the
+   * live projection instead of throwing; a settled child releases every waiter.
+   * @param childId - durable direct-child session id.
+   * @param timeoutMs - positive finite wait budget in milliseconds.
+   * @param signal - optional caller cancellation, fusing with the budget.
+   * @returns `{settled:true}` with the final projection, or `{settled:false}`
+   *   with the live projection when the budget elapsed (or the signal aborted) first.
+   * @throws when continuation services are unavailable or `timeoutMs` is not a
+   *   positive finite number (validation rejects 0/negative/NaN like `jobs.wait`).
+   */
+  async waitSettlement(childId: SessionId, timeoutMs: number, signal?: AbortSignal): Promise<SubagentWaitOutcome> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new Error(`invalid wait timeout: expected a positive number of milliseconds, got ${JSON.stringify(timeoutMs)}`)
+    }
+    this.ctx.logger.info('subagent wait registered', childId, timeoutMs)
+    return this.requireContinuations().waitSettlement(childId, timeoutMs, signal)
   }
 
   /**
@@ -511,7 +534,6 @@ export class SubagentRuntime extends TypertRemoteService {
    */
   registerProvider(provider: SubagentProvider): () => void {
     const name = provider.name
-    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous disposer
     return this.ctx.effect(function* (this: SubagentRuntime) {
       if (this.providers.has(name)) {
         throw new SubagentError(`a subagent provider named "${name}" is already registered`, 'DUPLICATE_PROVIDER')

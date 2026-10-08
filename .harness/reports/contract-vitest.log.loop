@@ -1,0 +1,619 @@
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v4.1.8 D:/code/dsh/deepseek-harness
+
+ ❯ |thread-safe| packages/core/agent-loop/tests/loop.spec.ts (70 tests | 18 failed) 703ms
+     ✓ publishes one dense live attempt and commits one v2 message with the exact embedded stream 34ms
+     ✓ abandons the live row when durable Assistant settlement is rejected 6ms
+     ✓ abandons a started live attempt when final block assembly fails 7ms
+     ✓ settles a failed attempt before retrying with a new dense attempt 7ms
+     ✓ rejects degenerate output before persisting and retries to a real answer 9ms
+     ✓ interrupts a mid-stream repetition loop via the streaming watchdog, then retries 7ms
+     ✓ ends the turn with a visible error when degenerate output cannot be retried 12ms
+     ✓ rejects a degenerate visible-text loop even when a tool call follows, then retries 8ms
+     ✓ rejects a truncated tool call (empty id/name) before persisting, then retries 8ms
+     ✓ does not emit an end frame when prepared dispatch throws before start 7ms
+     ✓ preserves the stream failure when its durable attempt settlement is also rejected 8ms
+     ✓ rejects invalid AgentOptions.maxTokens 0 before publication 5ms
+     ✓ rejects invalid AgentOptions.maxTokens -1 before publication 7ms
+     ✓ rejects invalid AgentOptions.maxTokens 1.5 before publication 6ms
+     ✓ rejects invalid AgentOptions.maxTokens NaN before publication 4ms
+     ✓ rejects invalid AgentOptions.maxTokens 9007199254740992 before publication 4ms
+     ✓ seeds a valid AgentOptions.maxTokens into the first model request 6ms
+     ✓ seeds an AgentOptions reasoning effort into the first model request 6ms
+     ✓ validates reasoning effort in declarative agent config 0ms
+     ✓ rejects concurrent maintenance while one job owns the Agent 4ms
+     × cancels queued wakeup work together with an active maintenance task 14ms
+     ✓ rejects a second maintenance task while one is active 5ms
+     × replays a wake latched behind maintenance at convergence 8ms
+     ✓ suppresses the replay when a latched maintenance wake is removed 5ms
+     × runs a simple turn: queued message → model → idle, with ordered events 9ms
+     ✓ round-trips tool calls: model requests tool → executes → result in next request 13ms
+     ✓ renders harness identity, then the persona, then tool guidance — with {{variables}} resolved 9ms
+     ✓ resolves {{cwd}} from the agent session workspace (factory create with meta.cwd) 9ms
+     ✓ contains a strict-variable render failure: the turn errors, the loop keeps serving turns 8ms
+     ✓ supports the model-via-agent/request path with a {{model}} persona: the supplier states it via the assemble waterfall 10ms
+     × sends no system message when system-prompt/assemble short-circuits with an empty assembly 8ms
+     × keeps a later nonempty prompt ahead of history after an initially empty assembly 18ms
+     × materializes changed runtime context at the history tail without rewriting the system header 11ms
+     ✓ re-emits unchanged runtime context when a surface replacement removed the retained snapshot 14ms
+     × clears compacted runtime context after the active set becomes empty 8ms
+     × does not clear runtime context after an unrelated replacement 10ms
+     × replaces a malformed retained runtime-context message with the current complete snapshot 7ms
+     ✓ records exact replay chunks inside the durable assistant message 9ms
+     ✓ injects steering between steps and continues the turn 8ms
+     × starts idle steering synchronously and enters later steering at the next step 10ms
+     ✓ stops after a throwing pre-step listener and retains later steering until a wakeup 7ms
+     ✓ inject() while idle durably stages context without opening a turn 8ms
+     ✓ inject() persists structured context content verbatim with durable source 6ms
+     ✓ defers inject() during tool execution until after the tool result 17ms
+     ✓ rejects non-JSON context before it enters the active tool-batch FIFO 11ms
+     ✓ agent/turn-stopping can steer another step (/loop pattern) 8ms
+     ✓ a tool can conclude the turn despite owing a follow-up request 9ms
+     ✓ continues for steering that arrived during a concluding tool step 8ms
+     ✓ agent/request waterfall switches models by returning a replacement config; the switch is logged 9ms
+     ✓ agent/pre-step fires once per proposed step before the step is opened 7ms
+     ✓ agent/pre-step fires before its step boundary opens and before the request 8ms
+     ✓ a throwing agent/pre-step listener fails the proposal, not the loop 7ms
+     ✓ cancel() mid-stream ends the turn with reason aborted 47ms
+     ✓ surfaces max-tokens as the turn-end reason when the last step is cut off 12ms
+     × a max-tokens step earlier in a turn still surfaces as max-tokens after a later completed step 9ms
+     ✓ a completed step after no max-tokens keeps the turn completed (max-tokens does not leak across turns) 12ms
+     × does not dispatch tool calls from a max-tokens-truncated step 9ms
+     × appends an empty completion anchor for a max-tokens step with no usage 20ms
+     × appends an empty completion anchor for a normal stop with no usage 8ms
+     × keeps safe max-tokens assistant content while dropping truncated tool calls 10ms
+     ✓ contains a step/end observer failure without changing continuation 8ms
+     × contains a reentrant send attempted during durable inbox publication 9ms
+     × preserves independent turn sources across an adjacent microtask send 8ms
+     ✓ keeps a session-listener send after dequeue in the following turn 9ms
+     × keeps a model-adapter callback send in the following turn 7ms
+     ✓ records normalized model errors on the turn boundary 8ms
+     ✓ disposing the loop fiber mid-turn stops the loop (HMR safety) 40ms
+     ✓ creates agents from config on startup 10ms
+     ✓ attaches config agent cwd to the fresh session header 6ms
+     ✓ replays a session log into an identical derived history 13ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 18 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > cancels queued wakeup work together with an active maintenance task
+AssertionError: expected [ 'park after cancellation', …(1) ] to deeply equal [ 'park after cancellation' ]
+
+- Expected
++ Received
+
+  [
+    "park after cancellation",
++   "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:559:30
+    557|
+    558|     // The pre-cancel wakeup is gone; the post-cancel wake replays at …
+    559|     expect(userTexts(agent)).toEqual(['park after cancellation'])
+       |                              ^
+    560|     expect(agent.inbox.nextTurn).toHaveLength(0)
+    561|     expect(adapter.requests).toHaveLength(1)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > replays a wake latched behind maintenance at convergence
+AssertionError: expected [ 'wake behind maintenance', …(1) ] to deeply equal [ 'wake behind maintenance' ]
+
+- Expected
++ Received
+
+  [
+    "wake behind maintenance",
++   "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:605:30
+    603|     await agent.whenIdle()
+    604|
+    605|     expect(userTexts(agent)).toEqual(['wake behind maintenance'])
+       |                              ^
+    606|     expect(adapter.requests).toHaveLength(1)
+    607|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > runs a simple turn: queued message → model → idle, with ordered events
+AssertionError: expected [ 'system', 'user', 'user', …(1) ] to deeply equal [ 'system', 'user', 'assistant' ]
+
+- Expected
++ Received
+
+  [
+    "system",
+    "user",
++   "user",
+    "assistant",
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:668:39
+    666|     // derived history: system prompt (surface node 0) + user + assist…
+    667|     const messages = agent.session.deriveMessages()
+    668|     expect(messages.map(m => m.role)).toEqual(['system', 'user', 'assi…
+       |                                       ^
+    669|     expect(messages[2]!.content).toEqual([{ type: 'text', text: 'hello…
+    670|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > sends no system message when system-prompt/assemble short-circuits with an empty assembly
+AssertionError: expected [ 'user', 'user' ] to deeply equal [ 'user' ]
+
+- Expected
++ Received
+
+  [
+    "user",
++   "user",
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:828:72
+    826|     expect(adapter.requests).toHaveLength(1)
+    827|     expect('system' in adapter.requests[0]!).toBe(false)
+    828|     expect(adapter.requests[0]!.messages.map(message => message.role))…
+       |                                                                        ^
+    829|     expect(agent.session.snapshotEvents().filter(event => event.type =…
+    830|       { data: { message: { role: 'system', content: [] } }, surfaceOp:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > keeps a later nonempty prompt ahead of history after an initially empty assembly
+AssertionError: expected [ 'user', 'user' ] to deeply equal [ 'user' ]
+
+- Expected
++ Received
+
+  [
+    "user",
++   "user",
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:844:74
+    842|       await firstIdle
+    843|       const head = agent.session.snapshotEvents().find(event => event.…
+    844|       expect(adapter.requests[0]?.messages.map(message => message.role…
+       |                                                                          ^
+    845|       expect(head).toMatchObject({ data: { message: { content: [] } },…
+    846|       expect(agent.session.surface.nodes[0]).toBe(head?.seq)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > materializes changed runtime context at the history tail without rewriting the system header
+AssertionError: expected [ { type: 'text', …(1) } ] to deeply equal [ { type: 'text', …(1) } ]
+
+- Expected
++ Received
+
+  [
+    {
+-     "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.
++     "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.
++
++ Current runtime context. This snapshot supersedes earlier runtime-context snapshots.
+
+  Mode: read-only.",
+      "type": "text",
+    },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:889:46
+    887|     await waitForIdle(ctx, agent)
+    888|     expect(contextEvents()).toHaveLength(1)
+    889|     expect(contextEvents()[0]?.data.content).toEqual([{
+       |                                              ^
+    890|       type: 'text',
+    891|       text: 'Current runtime context. This snapshot supersedes earlier…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > clears compacted runtime context after the active set becomes empty
+AssertionError: expected [ { type: 'text', …(1) } ] to deeply equal [ { type: 'text', …(1) } ]
+
+- Expected
++ Received
+
+  [
+    {
+-     "text": "Current runtime context: none. Earlier runtime-context snapshots no longer apply.",
++     "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
+      "type": "text",
+    },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:982:31
+    980|     const clearing = adapter.requests[1]?.messages.find(message =>
+    981|       message.role === 'user' && message.source?.kind === 'runtime-con…
+    982|     expect(clearing?.content).toEqual([{
+       |                               ^
+    983|       type: 'text',
+    984|       text: 'Current runtime context: none. Earlier runtime-context sn…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > does not clear runtime context after an unrelated replacement
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1007:79
+    1005|     await waitForIdle(ctx, agent)
+    1006|     expect(adapter.requests[0]?.messages.some(message =>
+    1007|       message.role === 'user' && message.source?.kind === 'runtime-con…
+       |                                                                               ^
+    1008|   })
+    1009|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > replaces a malformed retained runtime-context message with the current complete snapshot
+AssertionError: expected [ { type: 'text', …(1) } ] to deeply equal [ { type: 'text', …(1) } ]
+
+- Expected
++ Received
+
+  [
+    {
+-     "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.
++     "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.
++
++ Current runtime context. This snapshot supersedes earlier runtime-context snapshots.
+
+  Mode: read-only.",
+      "type": "text",
+    },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1028:46
+    1026|         : [])
+    1027|     expect(runtimeContexts).toHaveLength(2)
+    1028|     expect(runtimeContexts[1]?.data.content).toEqual([{
+       |                                              ^
+    1029|       type: 'text',
+    1030|       text: 'Current runtime context. This snapshot supersedes earlier…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > starts idle steering synchronously and enters later steering at the next step
+AssertionError: expected [ [ { type: 'text', …(1) } ], …(2) ] to deeply equal [ [ { type: 'text', …(1) } ], …(1) ]
+
+- Expected
++ Received
+
+@@ -5,10 +5,16 @@
+        "type": "text",
+      },
+    ],
+    [
+      {
++       "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++       "type": "text",
++     },
++   ],
++   [
++     {
+        "text": "second idle steer",
+        "type": "text",
+      },
+    ],
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1107:42
+    1105|     expect(agent.session.snapshotEvents()
+    1106|       .filter(event => event.type === 'user/message')
+    1107|       .map(event => event.data.content)).toEqual([
+       |                                          ^
+    1108|       [{ type: 'text', text: 'first idle steer' }],
+    1109|       [{ type: 'text', text: 'second idle steer' }],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > a max-tokens step earlier in a turn still surfaces as max-tokens after a later completed step
+AssertionError: expected [ …(4) ] to deeply equal [ { id: Any<String>, …(3) }, …(2) ]
+
+- Expected
++ Received
+
+@@ -13,15 +13,28 @@
+      },
+    },
+    {
+      "content": [
+        {
++         "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++         "type": "text",
++       },
++     ],
++     "id": "b9e14111-5c32-40a5-8622-0c68f076df58",
++     "role": "user",
++     "source": {
++       "kind": "runtime-context",
++     },
++   },
++   {
++     "content": [
++       {
+          "text": "first half",
+          "type": "text",
+        },
+      ],
+-     "id": "b9e14111-5c32-40a5-8622-0c68f076df58",
++     "id": "0b532de7-2379-41eb-8cc1-88795b4f29d0",
+      "role": "assistant",
+      "source": {
+        "kind": "model",
+        "model": "mock",
+        "provider": "mock",
+@@ -32,11 +45,11 @@
+        {
+          "text": "continue after truncation",
+          "type": "text",
+        },
+      ],
+-     "id": "0b532de7-2379-41eb-8cc1-88795b4f29d0",
++     "id": "36d277cd-8647-4108-80e5-472ce512a4cd",
+      "role": "user",
+      "source": {
+        "kind": "max-tokens-test",
+      },
+    },
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1523:52
+    1521|     expect(steps).toBe(2)
+    1522|     expect(adapter.requests).toHaveLength(2)
+    1523|     expect(adapter.requests[1]!.messages.slice(1)).toEqual([
+       |                                                    ^
+    1524|       {
+    1525|         id: expect.any(String) as unknown,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > does not dispatch tool calls from a max-tokens-truncated step
+AssertionError: expected [ …(2) ] to deeply equal [ { id: Any<String>, …(3) } ]
+
+- Expected
++ Received
+
+@@ -10,6 +10,19 @@
+      "role": "user",
+      "source": {
+        "kind": "user",
+      },
+    },
++   {
++     "content": [
++       {
++         "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++         "type": "text",
++       },
++     ],
++     "id": "8296f8b2-e11b-4f39-ab5b-5fc564569c87",
++     "role": "user",
++     "source": {
++       "kind": "runtime-context",
++     },
++   },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1596:53
+    1594|     expect(executions).toBe(0)
+    1595|     expect(agent.session.snapshotEvents().some(e => e.type === 'tool/c…
+    1596|     expect(agent.session.deriveMessages().slice(1)).toEqual([{
+       |                                                     ^
+    1597|       id: expect.any(String) as unknown,
+    1598|       role: 'user',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > appends an empty completion anchor for a max-tokens step with no usage
+AssertionError: expected [ …(2) ] to deeply equal [ { id: Any<String>, …(3) } ]
+
+- Expected
++ Received
+
+@@ -10,6 +10,19 @@
+      "role": "user",
+      "source": {
+        "kind": "user",
+      },
+    },
++   {
++     "content": [
++       {
++         "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++         "type": "text",
++       },
++     ],
++     "id": "6a50491a-07ec-4418-b303-f0abdf0f7dac",
++     "role": "user",
++     "source": {
++       "kind": "runtime-context",
++     },
++   },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1658:53
+    1656|     expect(assistant.sourceEventSeqs).toBeUndefined()
+    1657|     expect(assistant.type === 'assistant/message' ? assistant.data.str…
+    1658|     expect(agent.session.deriveMessages().slice(1)).toEqual([{
+       |                                                     ^
+    1659|       id: expect.any(String) as unknown,
+    1660|       role: 'user',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > appends an empty completion anchor for a normal stop with no usage
+AssertionError: expected [ …(2) ] to deeply equal [ { id: Any<String>, …(3) } ]
+
+- Expected
++ Received
+
+@@ -10,6 +10,19 @@
+      "role": "user",
+      "source": {
+        "kind": "user",
+      },
+    },
++   {
++     "content": [
++       {
++         "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++         "type": "text",
++       },
++     ],
++     "id": "50057e9e-e376-4f24-b299-d5bc936932a4",
++     "role": "user",
++     "source": {
++       "kind": "runtime-context",
++     },
++   },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1693:53
+    1691|     expect(assistant.sourceEventSeqs).toBeUndefined()
+    1692|     expect(assistant.type === 'assistant/message' ? assistant.data.str…
+    1693|     expect(agent.session.deriveMessages().slice(1)).toEqual([{
+       |                                                     ^
+    1694|       id: expect.any(String) as unknown,
+    1695|       role: 'user',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > keeps safe max-tokens assistant content while dropping truncated tool calls
+AssertionError: expected { kind: 'runtime-context' } to deeply equal { kind: 'model', …(3) }
+
+- Expected
++ Received
+
+  {
+-   "kind": "model",
+-   "model": "mock",
+-   "provider": "mock",
+-   "replayState": {
+-     "blocks": [
+-       "text-meta",
+-     ],
+-     "response": {
+-       "responseId": "resp-1",
+-     },
+-   },
++   "kind": "runtime-context",
+  }
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1726:54
+    1724|     // The follow-up request replays the truncated message with its re…
+    1725|     // metadata pruned in step with the dropped tool call.
+    1726|     expect(adapter.requests[1]?.messages[2]?.source).toEqual({
+       |                                                      ^
+    1727|       kind: 'model',
+    1728|       provider: 'mock',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > contains a reentrant send attempted during durable inbox publication
+AssertionError: expected [ [ { type: 'text', …(1) } ], …(1) ] to deeply equal [ [ { type: 'text', …(1) } ] ]
+
+- Expected
++ Received
+
+@@ -3,6 +3,12 @@
+      {
+        "text": "outer message",
+        "type": "text",
+      },
+    ],
++   [
++     {
++       "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++       "type": "text",
++     },
++   ],
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1817:22
+    1815|       .map(event => event.data.content)
+    1816|     expect(turns).toHaveLength(1)
+    1817|     expect(messages).toEqual([[{ type: 'text', text: 'outer message' }…
+       |                      ^
+    1818|   })
+    1819|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > preserves independent turn sources across an adjacent microtask send
+AssertionError: expected [ { kind: 'user' }, …(2) ] to deeply equal [ { kind: 'user' }, { kind: 'test' } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "kind": "user",
+    },
+    {
++     "kind": "runtime-context",
++   },
++   {
+      "kind": "test",
+    },
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1836:21
+    1834|       .map(event => event.data.source)
+    1835|     expect(turns).toHaveLength(2)
+    1836|     expect(sources).toEqual([
+       |                     ^
+    1837|       { kind: 'user' },
+    1838|       { kind: 'test' },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/18]⎯
+
+ FAIL  |thread-safe| packages/core/agent-loop/tests/loop.spec.ts > agent loop > keeps a model-adapter callback send in the following turn
+AssertionError: expected [ [ { type: 'text', …(1) } ], …(2) ] to deeply equal [ [ { type: 'text', …(1) } ], …(1) ]
+
+- Expected
++ Received
+
+@@ -5,10 +5,16 @@
+        "type": "text",
+      },
+    ],
+    [
+      {
++       "text": "On Windows, when you need a bash shell, prefer Git Bash (e.g. \"C:\\Program Files\\Git\\bin\\bash.exe\") over WSL: WSL often fails with \"localhost cannot connect\" and the command never runs.",
++       "type": "text",
++     },
++   ],
++   [
++     {
+        "text": "model callback message",
+        "type": "text",
+      },
+    ],
+  ]
+
+ ❯ packages/core/agent-loop/tests/loop.spec.ts:1891:22
+    1889|       .map(event => event.data.content)
+    1890|     expect(agent.session.snapshotEvents().filter(event => event.type =…
+    1891|     expect(messages).toEqual([
+       |                      ^
+    1892|       [{ type: 'text', text: 'outer message' }],
+    1893|       [{ type: 'text', text: 'model callback message' }],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/18]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  18 failed | 52 passed (70)
+   Start at  17:44:49
+   Duration  1.95s (transform 882ms, setup 322ms, import 771ms, tests 703ms, environment 0ms)

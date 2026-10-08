@@ -1,0 +1,29 @@
+name: harness-quality-gates
+
+# 确定性权威门禁：无 AI、无 LLM，fail-on-violation。任何 PR/推送都必须绿。
+# 这类门禁永远不进 agent；agent 只做判断类评审（见 llm-judge.yml）。
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 栈自适应：Maven/Gradle 走 JDK，npm 走 Node；按项目裁剪
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 确定性权威门禁
+        run: |
+          chmod +x ci/bin/*.sh
+          ./ci/bin/harness-gate.sh
+
+      - name: 对账（确定性部分）
+        run: ./ci/bin/closed-loop-audit.sh

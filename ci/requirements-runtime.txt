@@ -1,0 +1,3 @@
+# 运行回路（harness-runtime-check.sh → harness-runtime-run.py）依赖。
+# 安装: pip install -r ci/requirements-runtime.txt
+PyYAML>=6.0

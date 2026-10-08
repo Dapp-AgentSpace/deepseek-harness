@@ -89,9 +89,14 @@ interface Agent {
    * Resolve after the current whole-agent activity reaches quiescence. This
    * follows replacement work started before the observed driver retires,
    * but does not identify the settlement of any particular message.
-   * @returns fulfillment after no active driver or maintenance task remains.
+   * @param options - optional `timeoutMs` budget: a positive bounded wait.
+   *   When the budget elapses while the agent is still active, the promise
+   *   resolves `'timeout'` instead of waiting indefinitely (the agent keeps
+   *   running; the caller decides whether to keep the wait open).
+   * @returns `'idle'` once no active driver or maintenance task remains;
+   *   `'timeout'` when the optional budget expired first.
    */
-  whenIdle(): Promise<void>
+  whenIdle(options?: { timeoutMs?: number }): Promise<'idle' | 'timeout'>
 
   /**
    * Run one non-turn maintenance task from the true idle phase. The task starts

@@ -508,6 +508,32 @@ Record an authoritative positive or negative observation. Listeners must be sync
 
 Source: [`packages/fs/fs/src/index.ts`](../../packages/fs/fs/src/index.ts)
 
+<a id="fsobserved-query--waterfall"></a>
+
+#### `fs/observed-query` — waterfall
+
+Read-only query for the current observed state of a target under an actor's owner. The fs-observation-policy plugin answers with its recorded observation (present with its version, or confirmed absent) and falls through — yielding `undefined` — when it holds none; deployments without the policy also fall through, so a caller that consults this event degrades to "not observed" rather than failing. Unlike the intent slots this never mutates state: it is a decision *input* for a guard that already holds the arguments (the agent-loop action guard) and needs to know whether a target was re-observed after a failed mutation.
+
+```ts cordis-catalog
+/**
+ * Read-only query for the current observed state of a target under an
+ * actor's owner. The fs-observation-policy plugin answers with its recorded
+ * observation (present with its version, or confirmed absent) and falls
+ * through — yielding `undefined` — when it holds none; deployments without
+ * the policy also fall through, so a caller that consults this event
+ * degrades to "not observed" rather than failing. Unlike the intent slots
+ * this never mutates state: it is a decision *input* for a guard that
+ * already holds the arguments (the agent-loop action guard) and needs to
+ * know whether a target was re-observed after a failed mutation.
+ * @param target - the resolved target to query.
+ * @param actor - the opaque tool-execution context whose owner state is queried.
+ * @mode waterfall
+ */
+'fs/observed-query'(target: FsTarget, actor: object | undefined, next: () => FsObservation | undefined | Promise<FsObservation | undefined>): Promise<FsObservation | undefined>
+```
+
+Source: [`packages/fs/fs/src/index.ts`](../../packages/fs/fs/src/index.ts)
+
 <a id="fswrite-intent--waterfall"></a>
 
 #### `fs/write-intent` — waterfall

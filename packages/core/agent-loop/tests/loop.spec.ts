@@ -72,6 +72,14 @@ function userTexts(agent: Agent): string[] {
     .flatMap(b => b.type === 'text' ? [b.text] : [])
 }
 
+// AgentLoop registers two behavioral-contract system-prompt sections (see
+// packages/core/agent-loop/src/index.ts): progress-policy (order -500, between
+// harness:identity and the persona) and tool-format (order 4990, after the
+// persona prefix and any tool-specific sections). The exact-render assertions
+// below must mirror that assembled order.
+const PROGRESS_POLICY_SECTION = 'Every step must advance the task: either call a tool to perform a concrete action, or give the final answer. Do not restate plans or actions you have already stated or performed; if the next step is identical to a previous one, stop and call a tool or answer directly instead.'
+const TOOL_FORMAT_SECTION = 'Call tools only through the native structured tool-call mechanism. Never emit a tool call as plain text, XML, JSON, or any other pseudo-format (e.g. `<invoke name="...">` or hand-written JSON arguments): those formats are not parsed or executed, they stall the run, and the session can only be recovered by deleting the invalid message.'
+
 describe('agent loop', () => {
   it('publishes one dense live attempt and commits one v2 message with the exact embedded stream', async () => {
     const ctx = await harness(new MockAdapter([textResponse('live')]))
@@ -229,6 +237,55 @@ describe('agent loop', () => {
     expect(messages[0]?.type === 'assistant/message' ? messages[0].data.message.content : undefined)
       .toEqual([{ type: 'text', text: 'recovered' }])
     // The failure surfaced through the request-error pipeline with our code.
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.code).toBe('DEGENERATE_OUTPUT')
+    expect(failures[0]?.message).toMatch(/degenerate output/)
+    // The turn completed normally after the retried answer.
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'completed' } },
+    })
+  })
+
+  it('interrupts a mid-stream repetition loop via the streaming watchdog, then retries', async () => {
+    // c079 seq 1090 showed the *real* gap: a model stuck in a repetition loop
+    // never emits a finish chunk, so the post-stream DEGENERATE_OUTPUT /
+    // repetition guards never run and the stream runs forever (the operator
+    // had to stop it manually, and the abort salvage then dumped the repeated
+    // blocks into the log). The streaming watchdog samples the accumulated
+    // blocks while the stream is in flight and breaks out of it the moment the
+    // same detectors fire, routing the attempt through the DEGENERATE_OUTPUT
+    // retry pipeline. Here the model streams 128 identical long lines (each
+    // below the short-line threshold, so only the adjacent-fragment wave can
+    // catch it) and then hangs without ever finishing.
+    const repeated = 'Critical context found. Re-running gates under git-bash:'
+    const hangAfter = [
+      { type: 'block-start' as const, index: 0, blockType: 'text' as const },
+      ...Array.from({ length: 128 }, (): StreamChunk => ({ type: 'text-delta', index: 0, text: `${repeated}\n` })),
+      { type: 'block-end' as const, index: 0, block: { type: 'text' as const, text: `${repeated}\n`.repeat(128) } },
+    ]
+    const ctx = await harness(new MockAdapter([{ hangAfter }, textResponse('recovered')]))
+    const agent = await ctx.agentLoop.create(SessionId('streaming-watchdog-retry'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const failures: Array<{ code: string; message: string }> = []
+    ctx.on('agent/request-error', async ({ failure }) => {
+      failures.push({ code: failure.code, message: failure.message })
+      return { kind: 'retry' as const }
+    })
+
+    send(agent, 'loop please')
+    await waitForIdle(ctx, agent)
+
+    // The mid-stream degenerate attempt never reaches the durable log; only
+    // the retried answer persists.
+    const messages = agent.session.snapshotEvents().filter(event => event.type === 'assistant/message')
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?.type === 'assistant/message' ? messages[0].data.message.content : undefined)
+      .toEqual([{ type: 'text', text: 'recovered' }])
+    // The streaming guard surfaced through the request-error pipeline with the
+    // DEGENERATE_OUTPUT code rather than hanging forever.
     expect(failures).toHaveLength(1)
     expect(failures[0]?.code).toBe('DEGENERATE_OUTPUT')
     expect(failures[0]?.message).toMatch(/degenerate output/)
@@ -668,7 +725,7 @@ describe('agent loop', () => {
     await waitForIdle(ctx, agent)
 
     const request = adapter.requests[0]
-    expect(systemOf(request)).toBe('You are an AI agent powered by DeepSeek Harness.\n\nYou are a test agent on mock.\n\nUse the noop tool wisely.')
+    expect(systemOf(request)).toBe(`You are an AI agent powered by DeepSeek Harness.\n\n${PROGRESS_POLICY_SECTION}\n\nYou are a test agent on mock.\n\nUse the noop tool wisely.\n\n${TOOL_FORMAT_SECTION}`)
     expect(request!.tools?.map(t => t.name)).toEqual(['noop'])
   })
 
@@ -685,7 +742,7 @@ describe('agent loop', () => {
     send(agent, 'hi')
     await waitForIdle(ctx, agent)
 
-    expect(systemOf(adapter.requests[0])).toBe('You are an AI agent powered by DeepSeek Harness.\n\nWorking in /work/space.')
+    expect(systemOf(adapter.requests[0])).toBe(`You are an AI agent powered by DeepSeek Harness.\n\n${PROGRESS_POLICY_SECTION}\n\nWorking in /work/space.\n\n${TOOL_FORMAT_SECTION}`)
   })
 
   it('contains a strict-variable render failure: the turn errors, the loop keeps serving turns', async () => {
@@ -721,7 +778,7 @@ describe('agent loop', () => {
     await waitForIdle(ctx, agent)
 
     expect(adapter.requests).toHaveLength(1)
-    expect(systemOf(adapter.requests[0])).toBe('You are an AI agent powered by DeepSeek Harness.\n\nIn /rescued.')
+    expect(systemOf(adapter.requests[0])).toBe(`You are an AI agent powered by DeepSeek Harness.\n\n${PROGRESS_POLICY_SECTION}\n\nIn /rescued.\n\n${TOOL_FORMAT_SECTION}`)
     const turnEnds = agent.session.snapshotEvents().filter(e => e.type === 'turn/end')
     expect(turnEnds).toHaveLength(2)
     expect(turnEnds[1]?.type === 'turn/end' && turnEnds[1].data.reason.kind).toBe('completed')
@@ -751,7 +808,7 @@ describe('agent loop', () => {
 
     expect(adapter.requests).toHaveLength(1)
     expect(adapter.requests[0]!.model).toBe('mock')
-    expect(systemOf(adapter.requests[0])).toBe('You are an AI agent powered by DeepSeek Harness.\n\nYou run on mock.')
+    expect(systemOf(adapter.requests[0])).toBe(`You are an AI agent powered by DeepSeek Harness.\n\n${PROGRESS_POLICY_SECTION}\n\nYou run on mock.\n\n${TOOL_FORMAT_SECTION}`)
   })
 
   it('sends no system message when system-prompt/assemble short-circuits with an empty assembly', async () => {

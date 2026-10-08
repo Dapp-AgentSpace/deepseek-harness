@@ -24,6 +24,7 @@ import type {
   SessionLogOffset as SessionLogOffsetType,
   UserMessage,
 } from '@deepseek-ai/dsh-session'
+import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
 import {
   appendDelegatedPolicyOverrides,
@@ -36,6 +37,18 @@ import { SubagentError } from './error.ts'
 import { SubagentInbox } from './inbox.ts'
 import type { SubagentDelivery } from './inbox.ts'
 import type { ActivationObserver, ActivationTerminal } from './lifecycle.ts'
+import type { SubagentWaitOutcome, SubagentWaitProjection } from './types.ts'
+
+/**
+ * Budget for one bounded idle wait inside `watchSettlement`. Elapsing does not
+ * end the watch: the code re-checks the child's status and last-activity
+ * freshness and keeps waiting while it looks alive, instead of hanging forever.
+ */
+const SETTLEMENT_WATCH_IDLE_MS = 60_000
+/** Timeout-reason code for bounded `waitSettlement` waits. */
+const SUBAGENT_WAIT_TIMEOUT = 'SUBAGENT_WAIT_TIMEOUT'
+/** One registered settlement-wait callback for a child. */
+type SettlementWaiter = (projection: SubagentWaitProjection) => void
 
 /** Process-local slots shared through uninterrupted continuable parent links. */
 class ActivationPool {
@@ -191,6 +204,8 @@ export class ContinuableActivationRegistry {
    * poisoning a later same-id replacement.
    */
   private readonly closingScopes = new Map<Agent, Set<Agent>>()
+  /** Child session id → registered settlement waiters awaiting its release. */
+  private readonly settlementWaiters = new Map<SessionId, Set<SettlementWaiter>>()
   private draining = false
 
   /**
@@ -726,8 +741,20 @@ export class ContinuableActivationRegistry {
     void (async () => {
       while (true) {
         const idleObservation = activation.poke
-        await activation.handle.agent.whenIdle()
+        const waited = await activation.handle.agent.whenIdle({ timeoutMs: SETTLEMENT_WATCH_IDLE_MS })
         if (activation.inbox.closing !== undefined) return
+        /* v8 ignore start -- a 60s settlement-watch budget cannot elapse in unit tests; the arm re-checks staleness instead of hanging. */
+        if (waited === 'timeout') {
+          const agent = activation.handle.agent
+          const staleMs = Date.now() - agent.lastActivityAt
+          if (agent.status !== 'running' || staleMs >= SETTLEMENT_WATCH_IDLE_MS) {
+            this.ctx.logger.warn(
+              `subagent "${activation.childId}" idle wait elapsed (status=${agent.status}, ${staleMs}ms since last activity); keeping the settlement watch open`,
+            )
+          }
+          continue
+          /* v8 ignore stop */
+        }
         const readiness = await this.locks.run(activation.childId, () => Promise.resolve(
           this.settlementState(activation, idleObservation),
         ))
@@ -838,6 +865,12 @@ export class ContinuableActivationRegistry {
         ))
       }
     }
+    // Capture the final projection before handle disposal tears the child down.
+    const settledProjection: SubagentWaitProjection = {
+      id: childId,
+      status: 'inactive',
+      lastActivityAt: activation.handle.agent.lastActivityAt,
+    }
     try {
       await activation.handle.dispose()
     } catch (error: unknown) {
@@ -862,9 +895,67 @@ export class ContinuableActivationRegistry {
     this.resident.delete(childId)
     activation.releaseSlot()
     this.notifySettlement(activation, activation.observer.terminal(failure))
+    this.releaseSettlementWaiters(childId, settledProjection)
     this.releaseOwnership(childId)
     activation.observer.settle(failure)
     if (failure !== undefined) throw failure
+  }
+
+  /**
+   * Wait up to `timeoutMs` for one resident continuable child to settle, or
+   * observe its live projection when it does not. Mirrors `jobs.wait` semantics:
+   * a budget that elapses (or caller cancellation) resolves with the current
+   * projection instead of throwing, and every waiter is released when the child
+   * settles. A child that is no longer resident is reported settled immediately
+   * with an `'inactive'` projection.
+   */
+  async waitSettlement(childId: SessionId, timeoutMs: number, signal?: AbortSignal): Promise<SubagentWaitOutcome> {
+    const activation = this.resident.get(childId)
+    if (activation === undefined) {
+      return { settled: true, agent: { id: childId, status: 'inactive', lastActivityAt: 0 } }
+    }
+    const startedAt = Date.now()
+    const agent = activation.handle.agent
+    const projection = (): SubagentWaitProjection => ({
+      id: childId,
+      status: agent.status === 'running' ? 'running' : 'inactive',
+      lastActivityAt: agent.lastActivityAt,
+    })
+    using budget = deadline(signal, timeoutMs, SUBAGENT_WAIT_TIMEOUT)
+    if (budget.signal.aborted) {
+      // A pre-aborted signal would register a listener that never fires.
+      return { settled: false, agent: projection() }
+    }
+    // `await` keeps the scoped deadline alive until the promise settles; a bare
+    // `return` would dispose it (clearing the timer) the instant this body exits.
+    return await new Promise<SubagentWaitOutcome>((resolve) => {
+      const waiters = this.settlementWaiters.get(childId) ?? new Set<SettlementWaiter>()
+      const done = (settled: boolean, settledProjection?: SubagentWaitProjection): void => {
+        budget.signal.removeEventListener('abort', onAbort)
+        waiters.delete(waiter)
+        resolve({ settled, agent: settledProjection ?? projection() })
+      }
+      const onAbort = (): void => {
+        // A budget that elapsed is a timeout; caller cancellation is not.
+        if (timeoutOf(budget.signal, SUBAGENT_WAIT_TIMEOUT) !== undefined) {
+          this.ctx.logger.info('subagent wait timed out', childId, Date.now() - startedAt)
+        }
+        done(false)
+      }
+      const waiter: SettlementWaiter = settledProjection => done(true, settledProjection)
+      budget.signal.addEventListener('abort', onAbort, { once: true })
+      waiters.add(waiter)
+      this.settlementWaiters.set(childId, waiters)
+    })
+  }
+
+  /** Release every settlement waiter for one child, then drop the registration. */
+  private releaseSettlementWaiters(childId: SessionId, projection: SubagentWaitProjection): void {
+    const waiters = this.settlementWaiters.get(childId)
+    if (waiters === undefined || waiters.size === 0) return
+    this.settlementWaiters.delete(childId)
+    for (const waiter of waiters) waiter(projection)
+    this.ctx.logger.info('subagent settlement released', childId, waiters.size)
   }
 
   /** Tell the durable direct parent how this Activation ended. */

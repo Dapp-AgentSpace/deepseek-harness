@@ -179,7 +179,6 @@ async function raceAbortCall<T>(
   try {
     return await raceAbort(pending, signal, id)
   } catch (error: unknown) {
-    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the signal can abort while the operation is awaited.
     if (signal.aborted && releaseAbandoned !== undefined) {
       void pending.then(releaseAbandoned, () => undefined)
     }
@@ -370,6 +369,31 @@ export class AgentLoop extends Service implements AgentFactory {
     ctx.systemPrompt.variable('provider', context => context.agent?.options.provider)
     ctx.systemPrompt.variable('model', context => context.agent?.options.model)
     ctx.systemPrompt.variable('cwd', context => context.agent?.session.header.cwd)
+    // Agent-loop behavioral contract, rendered as system-prompt sections:
+    // - progress policy: a model under long-context stress can stall into an
+    //   action-planning loop (repeating the same plan in varied phrasings,
+    //   e.g. `读 arch-review 报告` / `读 arch-review.md` / `读 arch review
+    //   范式`). The DEGENERATE_OUTPUT detectors are the safety net; this
+    //   section is the cheap prevention layer telling the model each step must
+    //   advance — either call a tool or finish.
+    // - tool format: a model that emits a tool call as text/XML/JSON instead of
+    //   the native structured tool-call block stalls the loop permanently (the
+    //   loop sees no tool-call block, treats the turn as done, and the session
+    //   log can only be recovered by deleting the invalid message).
+    ctx.systemPrompt.section({
+      name: 'agent-loop:progress-policy',
+      // Between HARNESS_IDENTITY (-1000) and DEPLOYMENT_PERSONA_PREFIX (0):
+      // a global agent behavior rule, before any deployment persona text.
+      order: -500,
+      text: 'Every step must advance the task: either call a tool to perform a concrete action, or give the final answer. Do not restate plans or actions you have already stated or performed; if the next step is identical to a previous one, stop and call a tool or answer directly instead.',
+    })
+    ctx.systemPrompt.section({
+      name: 'agent-loop:tool-format',
+      // Start of the tool area, just before TOOLS_SDK (5000): a tool-call
+      // contract that applies to every tool, before tool-specific sections.
+      order: 4990,
+      text: 'Call tools only through the native structured tool-call mechanism. Never emit a tool call as plain text, XML, JSON, or any other pseudo-format (e.g. `<invoke name="...">` or hand-written JSON arguments): those formats are not parsed or executed, they stall the run, and the session can only be recovered by deleting the invalid message.',
+    })
 
     for (const { id, sessionId, cwd, resumeSessionId, ...options } of this.config.agents) {
       const meta = cwd === undefined ? {} : { cwd }
@@ -697,7 +721,6 @@ export class AgentLoop extends Service implements AgentFactory {
    */
   private async appendUnstoredSuffix(stored: StoredSession | undefined, session: Session): Promise<void> {
     if (stored === undefined) return
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const suffix = session.snapshotEvents(SessionLogOffset(stored.storedCount))
     if (suffix.length > 0) await stored.handle.append(suffix)
     // Advance by what was stored, not to `session.seq`: an event appended

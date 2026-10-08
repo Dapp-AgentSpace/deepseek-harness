@@ -72,6 +72,24 @@ export interface SubagentSendMessageOptions {
   readonly signal: AbortSignal
 }
 
+/** Live projection of one continuable child for `waitSettlement` outcomes. */
+export interface SubagentWaitProjection {
+  /** The durable direct-child session id. */
+  readonly id: SessionId
+  /** `'running'` while an Activation is resident and active; `'inactive'` once settled or never admitted. */
+  readonly status: 'running' | 'inactive'
+  /** Wall-clock (epoch ms) of the child's last phase/step activity; `0` for never-resident children. */
+  readonly lastActivityAt: number
+}
+
+/** Outcome of one `ctx.subagents.waitSettlement` call. */
+export interface SubagentWaitOutcome {
+  /** `true` when the child settled within the budget and this waiter was released. */
+  readonly settled: boolean
+  /** Final projection on settlement, or the live projection when the budget elapsed first. */
+  readonly agent: SubagentWaitProjection
+}
+
 /**
  * Observe-only identifying detail for a published subagent run, carried by
  * `subagent/start`. One-shot runs and continuable Activation epochs share this

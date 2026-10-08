@@ -4078,6 +4078,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'target', description: 'the target whose presence or absence was observed.' }, { name: 'observation', description: 'present with its version, or confirmed absent.' }, { name: 'actor', description: 'the observing tool-execution context; undefined records nothing useful.' }],
   },
   {
+    name: 'fs/observed-query',
+    mode: 'waterfall',
+    signature: '\'fs/observed-query\'(target: FsTarget, actor: object | undefined, next: () => FsObservation | undefined | Promise<FsObservation | undefined>): Promise<FsObservation | undefined>',
+    summary: 'Read-only query for the current observed state of a target under an actor\'s owner.',
+    description: 'Read-only query for the current observed state of a target under an actor\'s owner. The fs-observation-policy plugin answers with its recorded observation (present with its version, or confirmed absent) and falls through — yielding `undefined` — when it holds none; deployments without the policy also fall through, so a caller that consults this event degrades to "not observed" rather than failing. Unlike the intent slots this never mutates state: it is a decision *input* for a guard that already holds the arguments (the agent-loop action guard) and needs to know whether a target was re-observed after a failed mutation.',
+    parameters: [{ name: 'target', description: 'the resolved target to query.' }, { name: 'actor', description: 'the opaque tool-execution context whose owner state is queried.' }],
+  },
+  {
     name: 'fs/write-intent',
     mode: 'waterfall',
     signature: '\'fs/write-intent\'(target: FsTarget, actor: object | undefined, next: () => FsWriteIntent | undefined | Promise<FsWriteIntent | undefined>): Promise<FsWriteIntent | undefined>',

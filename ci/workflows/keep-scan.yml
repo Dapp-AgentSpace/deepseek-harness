@@ -1,0 +1,24 @@
+name: harness-keep-scan
+
+# cs-keep lesson → checklist/pitfalls 沉淀管道。无头 LLM（subagent）解析提取路由提案（scan）。
+# 提案只落 proposed；批准 + 落盘走 skill `harness-keep`（交互式），CI 不自动落盘。
+# 确定性门禁在 quality-gates.yml，LLM 评审在 llm-judge.yml；这里只做「沉淀」的扫描一环。
+
+on:
+  # 定时暂未注册：schedule 已移除，待之后再挂 cron（例如每小时 `17 * * * *`）。当前仅手动 workflow_dispatch 触发。
+  workflow_dispatch: {}
+
+jobs:
+  keep:
+    runs-on: ubuntu-latest
+    env:
+      # 无头 LLM runner：CI 用 traecli（旗舰版 token）；无 token 时 keep-scan 自动回退 claude。
+      TRAECLI_PERSONAL_ACCESS_TOKEN: ${{ secrets.TRAECLI_PERSONAL_ACCESS_TOKEN }}
+      HARNESS_KEEP_RUNNER: traecli
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: keep 扫描（cs-keep lesson → checklist/pitfalls 提案）
+        run: |
+          chmod +x ci/bin/*.sh
+          ./ci/bin/harness-keep-scan.sh

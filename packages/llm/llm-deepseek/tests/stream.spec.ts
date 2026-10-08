@@ -90,6 +90,35 @@ describe('Messages stream', () => {
     await expect(chunks(translate(events([start, ...end()]), MODEL))).rejects.toMatchObject({ code: 'EMPTY_RESPONSE' })
     await expect(chunks(translate(events(textEvents.slice(0, -1)), MODEL))).rejects.toMatchObject({ code: 'STREAM_CLOSED' })
   })
+
+  it('classifies a stop with only thinking or empty text as EMPTY_RESPONSE', async () => {
+    // A completed stop must carry user-facing text; reasoning-only or
+    // empty-text completions are degenerate, not successful stops.
+    await expect(chunks(translate(events([start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: 'mull' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: ' more' } },
+      { type: 'content_block_stop', index: 0 }, ...end()]), MODEL))).rejects.toMatchObject({ code: 'EMPTY_RESPONSE' })
+    await expect(chunks(translate(events([start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_stop', index: 0 }, ...end()]), MODEL))).rejects.toMatchObject({ code: 'EMPTY_RESPONSE' })
+    await expect(chunks(translate(events([start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: 'mull' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: ' more' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_stop', index: 1 }, ...end()]), MODEL))).rejects.toMatchObject({ code: 'EMPTY_RESPONSE' })
+  })
+
+  it('keeps a stop with thinking and real text successful', async () => {
+    const result = await chunks(translate(events([start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: 'mull' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: ' more' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'answer' } },
+      { type: 'content_block_stop', index: 1 }, ...end()]), MODEL))
+    expect(result.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
+  })
 })
 
 describe('SSE framing and provider failures', () => {

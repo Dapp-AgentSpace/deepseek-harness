@@ -1,0 +1,45 @@
+# 兼容性策略 —— 最低支持版本基线的判定单源（`compat` 确定性门禁读它，执行器 ci/bin/compatcheck.py）。
+# 设计决策（只判声明式、与 dep 同构、API 级 breaking change 排除）见 ADR-0011。
+#
+# 两层，与依赖安全（dep-policy.yaml）/坑库同构：
+#   - 本文件 = shared 基线（suite 源，随 upgrade 整体同步，勿在此记录项目特有例外）；
+#   - 项目自有例外写 .harness/compat-policy.yaml（语义层，upgrade 不覆盖），两层取并集。
+#     只增不减：项目侧无法「下调」基线下限，要放行必须走 ignore + reason（可审计的显式例外）。
+#
+# 判定语义（全量、不看 diff）：仓库**声明的**最低支持版本低于基线即红。
+#   声明来源：package.json engines.node/npm · go.mod `go` 指令 · Cargo.toml rust-version（MSRV）·
+#   pom.xml 的 maven.compiler.release|source|target / java.version · build.gradle 的 sourceCompatibility ·
+#   pyproject.toml requires-python / setup.py|setup.cfg python_requires。
+#   声明 >= 基线 → 过；声明 < 基线 → blocking。
+#   **未声明不构成违例**（不承诺即不违反），但整仓一条声明都没有时本门禁判为「不可真实接线」，
+#   scaffold 把 gates.compat 置 false（同 wire_dep 取舍：不刷每次跑都来的黄噪声）。
+#   跑完但零声明（该引擎策略有基线、本仓未声明）时门禁报绿，并在报告里列「未声明引擎」，
+#   让覆盖缺口可见——跑完的负结论是结论，不是假绿。
+#
+# 范围边界：本门禁只管「运行时/生态最低支持版本」这一类兼容性声明。
+#   API 级 breaking change（japicmp / api-extractor / cargo-semver-checks 那类）需要**基线产物**
+#   （上一版 jar / .api.md / 上一 tag），是另一种输入模型，不在本门禁的声明式判定范围内，另议。
+#   具体依赖库的版本兼容性（peer 冲突、传递依赖）是 dep 门禁的域。
+#
+# 格式约束：本文件与 .harness/compat-policy.yaml 只允许「顶层 key + 二级 `- ` 列表项」两级结构
+# （compatcheck.py 为不引入 PyYAML 依赖，用最小正则解析，见 ci/bin/depcheck.py / checklist.py 同款取舍）。
+
+# 最低支持版本基线：一条 = 一个引擎 + 它的版本下限。
+# 引擎名须与清单里的字段名对应：node / npm（package.json engines）· go（go.mod）·
+# rust（Cargo.toml rust-version）· java（pom/gradle 编译级别）· python（requires-python）。
+# 判定只比「声明的下界 vs 这里的下限」的数值大小，不解释具体框架/库版本。
+floors:
+  - node 18
+  - python 3.9
+  - go 1.21
+  - rust 1.70
+  - java 17
+
+# 例外：命中但被 owner 明确接受。每条必须带 reason（无 reason 的条目视为未定义，门禁忽略并告警）；
+# expires 可选，到期后该例外自动失效（重新变红）——防「例外沉淀成永久豁免」。
+# 字段：engine（引擎名，同 floors 左列）；reason；expires。
+ignore: []
+# ignore 示例（写进 .harness/compat-policy.yaml，不要写在本 shared 基线里）：
+#   - engine: node
+#     reason: "本服务由固定镜像承载，运行时已统一到 20；package.json 的 engines 尚未跟上，排期修正"
+#     expires: "2026-12-31"

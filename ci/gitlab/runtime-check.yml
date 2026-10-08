@@ -1,0 +1,25 @@
+# harness 运行回路（定时 · 只读）— GitLab CI 模板
+#
+# 用法：合并进项目 .gitlab-ci.yml（可 `include: ci/gitlab/runtime-check.yml`，或复制本 job）。
+#   定时：在 GitLab 项目 → CI/CD → Schedules 配 cron（如 23 5 * * *），触发时
+#         $CI_PIPELINE_SOURCE == "schedule"；也可手动 Run pipeline（web）。
+#   通知：pipeline 失败时 GitLab 默认邮件通知项目成员（含 owner）；
+#         若要 Slack/企微，在 Settings → Integrations 配 webhook（无需改本文件）。
+#   输入 = 写时埋点的结构化日志 + 核心数据；发现偏差 → 落 cs-issue + 非零退出。
+#   配置与凭据来源（方向 B，脚本内不硬编码）：
+#     HARNESS_DATA_TOKEN —— 唯一 CI 机密：只读 token，Settings → CI/CD → Variables 勾 Masked（+ Protected）
+#     其余配置在仓库内 .harness/：env.yaml（env.data.* 单源）+ runtime-config.yaml（每域 delta）+
+#     runtime-subjects.yaml（依赖数据值）；由 harness-runtime-check.sh 读配执行。
+#   （静态反模式扫描是确定性门禁 quality-gates 的职责，不在本 job；本 job 只做业务行为校验。）
+
+stages:
+  - runtime
+
+harness-runtime-check:
+  stage: runtime
+  image: ubuntu:latest   # 按项目替换：runtime 脚本抓日志若需 curl/jq，换带这些工具的镜像
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  script:
+    - bash ci/bin/harness-runtime-check.sh

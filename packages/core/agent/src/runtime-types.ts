@@ -170,6 +170,8 @@ declare module './types.ts' {
     readonly inbox: Inbox
     /** The current lifecycle state, mirrored on every `agent/status` transition. */
     readonly status: AgentStatus
+    /** Wall-clock (epoch ms) of the agent's last phase/step activity transition; advances on every phase commit and step start. */
+    readonly lastActivityAt: number
     /** Agent-scoped context; its contributions are agent-local, unwind on disposal, and reject registration afterward. */
     readonly ctx: Context
 
@@ -186,9 +188,14 @@ declare module './types.ts' {
    * Resolve after the current whole-agent activity reaches quiescence. This
    * follows replacement work started before the observed driver retires,
    * but does not identify the settlement of any particular message.
-   * @returns fulfillment after no active driver or maintenance task remains.
+   * @param options - optional idle-wait budget; `timeoutMs` must be a positive
+   *   finite number of milliseconds (0, negative, or non-finite values throw,
+   *   mirroring `jobs.wait` validation).
+   * @returns `'idle'` once no active driver or maintenance task remains, or
+   *   `'timeout'` when the budget elapsed first. Without `options` the wait is
+   *   unbounded, byte-identical to the historical no-argument behavior.
    */
-    whenIdle(): Promise<void>
+    whenIdle(options?: { timeoutMs?: number }): Promise<'idle' | 'timeout'>
 
     /**
    * Run one non-turn maintenance task from the true idle phase. The task starts

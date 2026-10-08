@@ -1,0 +1,62 @@
+# 依赖安全策略 —— 漏洞与许可证的判定基线（`dep` 确定性门禁读它，执行器 ci/bin/depcheck.py）。
+#
+# 两层，与坑库同构：
+#   - 本文件 = shared 基线（suite 源，随 upgrade 整体同步，勿在此记录项目特有例外）；
+#   - 项目自有例外写 .harness/dep-policy.yaml（语义层，upgrade 不覆盖），两层取并集。
+#     只增不减：项目侧无法「取消」基线的禁止项，要放行必须走 ignore + reason（可审计的显式例外）。
+#
+# 判定语义（全量、不看 diff）：命中即红，CVE 与许可证都不区分「新增/存量」。
+# 存量的既成事实不靠静默豁免，靠 ignore 逐条登记（带 reason + 可选 expires）。
+# 大仓首次接入会有一次性 triage 成本——gate 会把每条 finding 的 ignore 骨架写进
+# .harness/reports/dep-last.md，复制进 .harness/dep-policy.yaml 并写明理由即可。
+# 这是有意为之：把「已知但接受」变成留痕的决定，而不是无声的绿。
+#
+# 格式约束：本文件与 .harness/dep-policy.yaml 只允许「顶层 key + 二级 `- ` 列表项」两级结构
+# （depcheck.py 为不引入 PyYAML 依赖，用最小正则解析，见 ci/bin/checklist.py 同款取舍）。
+
+# 漏洞：命中即红的最低严重级（trivy 分级 UNKNOWN/LOW/MEDIUM/HIGH/CRITICAL）。
+# CRITICAL/HIGH 为默认；调宽（如加 MEDIUM）会把存量噪声放大，建议先只留 CRITICAL/HIGH。
+block_severities:
+  - CRITICAL
+  - HIGH
+
+# 许可证禁止清单（命中即红；匹配 trivy 报告的 license id，大小写不敏感）。
+# 匹配规则：精确相等，或 reported = 本清单项 + `-only` / `-or-later`（尾 `+` 等价于 `-or-later`）。
+# **`-with-<exception>` 形态一律不匹配**——那是额外授予而非同族变体，最典型的是
+# `GPL-2.0-with-classpath-exception`（jakarta.annotation-api、jaxb-api 等标准 Java 依赖的许可，
+# 明确允许链接进闭源大作品）。若本仓确要拦某个例外形态，把完整 id 另立一条写进来即可（精确命中）。
+# 选型：传染型 copyleft（GPL/AGPL）+ 源码可用但限制商用（SSPL/BUSL/Elastic/CC-NC）+
+# Semgrep Registry 规则集（本套件因此只用自写规则，见 ci/rules/pitfalls.yaml）。
+# 有意不在清单里：MIT / Apache-2.0 / BSD / ISC / MPL-2.0（文件级 copyleft，商用可）/
+# LGPL-2.1|3.0（以独立进程/CLI 调用不传染，如 semgrep；若项目静态链接 LGPL 库须自行加禁止）。
+deny_licenses:
+  - GPL-2.0
+  - GPL-2.0-only
+  - GPL-2.0-or-later
+  - GPL-3.0
+  - GPL-3.0-only
+  - GPL-3.0-or-later
+  - AGPL-1.0
+  - AGPL-3.0
+  - AGPL-3.0-only
+  - AGPL-3.0-or-later
+  - SSPL-1.0
+  - BUSL-1.1
+  - Elastic-2.0
+  - CC-BY-NC-1.0
+  - CC-BY-NC-4.0
+  - CC-BY-NC-SA-4.0
+  - CC-BY-NC-ND-4.0
+  - Semgrep-Registry-1.0
+
+# 例外：命中但被 owner 明确接受。每条必须带 reason（无 reason 的条目视为未定义，门禁忽略并告警）；
+# expires 可选，到期后该例外自动失效（重新变红）——防「例外沉淀成永久豁免」。
+# 字段：vuln（CVE id）或 license（许可 id），二者其一；reason；expires。
+ignore: []
+# ignore 示例（写进 .harness/dep-policy.yaml，不要写在本 shared 基线里）：
+#   - license: GPL-3.0-only
+#     reason: "构建期工具（非运行时依赖），不随产物分发；已确认无链接"
+#     expires: "2027-03-31"
+#   - vuln: CVE-2023-12345
+#     reason: "仅在非默认配置路径可达，本项目未使用该配置；上游修复中"
+#     expires: "2026-12-31"
