@@ -70,11 +70,11 @@ async function harness(
   return ctx
 }
 
-function waitForIdle(_ctx: Context, agent: Agent): Promise<void> {
+function waitForIdle(_ctx: Context, agent: Agent): Promise<'idle' | 'timeout'> {
   return agent.whenIdle()
 }
 
-function sendAndWait(ctx: Context, agent: Agent): Promise<void> {
+function sendAndWait(ctx: Context, agent: Agent): Promise<'idle' | 'timeout'> {
   const idle = waitForIdle(ctx, agent)
   agent.followup(createUserMessage({ content: [{ type: 'text', text: 'recover through the provider boundary' }], source: { kind: 'user' } }))
   return idle

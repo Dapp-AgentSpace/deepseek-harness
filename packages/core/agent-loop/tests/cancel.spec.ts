@@ -442,7 +442,7 @@ describe('Agent.cancel()', () => {
     const agent = await ctx.agentLoop.create(SessionId('idle-listener-post-cancel-send'), { provider: 'mock', model: 'mock' })
 
     const replacementRegistered = Promise.withResolvers<undefined>()
-    let replacementIdle: Promise<void> | undefined
+    let replacementIdle: Promise<'idle' | 'timeout'> | undefined
     ctx.on('agent/status', ({ agent: subject, status }) => {
       if (subject !== agent || status !== 'idle' || replacementIdle !== undefined) return
       send(agent, 'cancelled replacement')

@@ -39,6 +39,7 @@ function stubAgent(ctx: Context, rawId: string, presetScope?: ScopeKey): Agent {
     session,
     inbox: unsupportedInbox(),
     status: 'idle' as const,
+    lastActivityAt: 0,
     ctx: agentCtx,
     send: () => {},
     followup: () => {},
@@ -46,7 +47,7 @@ function stubAgent(ctx: Context, rawId: string, presetScope?: ScopeKey): Agent {
     inject: () => {},
     cancel() {},
     runMaintenance: <T>(job: (signal: AbortSignal) => Promise<T>) => job(new AbortController().signal),
-    whenIdle() { return Promise.resolve() },
+    whenIdle() { return Promise.resolve('idle') },
   } satisfies Agent
   agentScopeDisposers.set(agent, async () => { await scopeFiber.dispose() })
   return agent

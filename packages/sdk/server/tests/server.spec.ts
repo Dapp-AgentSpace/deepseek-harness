@@ -319,7 +319,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     const agent = ({
       id: SessionId('zombie'),
       followup,
-      whenIdle: vi.fn(() => Promise.resolve()),
+      whenIdle: vi.fn(() => Promise.resolve('idle' as const)),
     } satisfies Pick<Agent, 'id' | 'followup' | 'whenIdle'>) as unknown as Agent
     const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
     // The registry drops the agent after creation, modelling an agent-loop-only

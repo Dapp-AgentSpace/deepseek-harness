@@ -151,7 +151,7 @@ function alwaysConfig(backoff: BackoffConfig = {}): AlwaysRetryPolicyConfig {
   }
 }
 
-function waitForIdle(_ctx: Context, agent: Agent): Promise<void> {
+function waitForIdle(_ctx: Context, agent: Agent): Promise<'idle' | 'timeout'> {
   return agent.whenIdle()
 }
 

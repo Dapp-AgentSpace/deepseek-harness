@@ -365,7 +365,8 @@ describe('foreground commands as jobs', () => {
       inject: () => {},
       cancel: () => {},
       runMaintenance: task => task(new AbortController().signal),
-      whenIdle: () => Promise.resolve(),
+      lastActivityAt: 0,
+      whenIdle: () => Promise.resolve('idle'),
     }
     ctx.agents.register(owner)
     const result = await ctx.tools.execute({
@@ -480,7 +481,8 @@ describe('owned background output', () => {
       inject: () => {},
       cancel: () => {},
       runMaintenance: task => task(new AbortController().signal),
-      whenIdle: () => Promise.resolve(),
+      lastActivityAt: 0,
+      whenIdle: () => Promise.resolve('idle'),
     }
     ctx.agents.register(owner)
     await ctx.tools.execute({

@@ -149,6 +149,7 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
       session,
       inbox,
       status: 'idle',
+      lastActivityAt: 0,
       ctx: ownerCtx,
       cancel: () => {},
       runMaintenance: () => Promise.reject(new Error('not used')),
@@ -161,7 +162,7 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
       inject: () => {},
       whenIdle: () => {
         options.onWhenIdle?.(agent)
-        return idle
+        return idle.then(() => 'idle' as const)
       },
     }
     await createOptions.setup?.(ownerCtx, agent)

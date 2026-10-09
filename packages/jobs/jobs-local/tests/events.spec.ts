@@ -31,7 +31,8 @@ function agentIn(ctx: Context, rawId: string, presetScope?: ScopeKey): Agent {
     inject: () => {},
     cancel: () => {},
     runMaintenance: task => task(new AbortController().signal),
-    whenIdle: () => Promise.resolve(),
+    lastActivityAt: 0,
+    whenIdle: () => Promise.resolve('idle'),
   }
 }
 

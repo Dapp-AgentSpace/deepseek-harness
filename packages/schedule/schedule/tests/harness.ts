@@ -123,8 +123,8 @@ export interface HarnessAgent extends Agent {
 export function agentFor(ctx: Context, id = 'original'): HarnessAgent {
   const session = ctx.sessions.create(SessionId(id))
   return {
-    id: session.id, session, ctx: ctx.extend(), options: {}, status: 'idle', inbox: unsupportedInbox(),
+    id: session.id, session, ctx: ctx.extend(), options: {}, status: 'idle', inbox: unsupportedInbox(), lastActivityAt: 0,
     send() {}, followup: vi.fn<(message: UserMessage) => void>(), steer() {}, inject() {}, cancel() {},
-    whenIdle: async () => {}, runMaintenance: operation => operation(new AbortController().signal),
+    whenIdle: async () => 'idle', runMaintenance: operation => operation(new AbortController().signal),
   }
 }

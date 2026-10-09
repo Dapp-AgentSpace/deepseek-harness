@@ -56,7 +56,7 @@ async function harness(dir: string, adapter: MockAdapter, beforeHooks?: (ctx: Co
   return ctx
 }
 
-function waitForIdle(_ctx: Context, agent: Agent): Promise<void> {
+function waitForIdle(_ctx: Context, agent: Agent): Promise<'idle' | 'timeout'> {
   return agent.whenIdle()
 }
 function events(agent: Agent): readonly SessionEvent[] { return agent.session.snapshotEvents() }

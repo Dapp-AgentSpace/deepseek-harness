@@ -61,7 +61,7 @@ async function harness(configPath: string, adapter: MockAdapter, opts: HarnessOp
   ctx.llm.registerAdapter(['mock'], adapter)
   return ctx
 }
-function waitForIdle(_ctx: Context, agent: Agent): Promise<void> {
+function waitForIdle(_ctx: Context, agent: Agent): Promise<'idle' | 'timeout'> {
   return agent.whenIdle()
 }
 function events(agent: Agent): readonly SessionEvent[] { return agent.session.snapshotEvents() }

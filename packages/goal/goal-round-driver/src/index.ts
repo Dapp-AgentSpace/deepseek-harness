@@ -434,7 +434,7 @@ export function apply(ctx: Context): void {
     // Yielded after listener registration, so this close runs first and the
     // composite effect removes listeners only after its promise settles.
     yield async () => {
-      const waits: Promise<void>[] = []
+      const waits: Promise<unknown>[] = []
       for (const state of states.values()) {
         state.stopping = true
         disarm(state)

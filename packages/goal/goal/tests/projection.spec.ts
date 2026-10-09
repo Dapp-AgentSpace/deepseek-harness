@@ -51,7 +51,8 @@ async function liveAgent(ctx: Context, session: Session): Promise<Agent> {
     inject: () => { throw new Error('goal projection tests do not inject model context') },
     cancel() {},
     runMaintenance: task => task(new AbortController().signal),
-    whenIdle() { return Promise.resolve() },
+    lastActivityAt: 0,
+    whenIdle() { return Promise.resolve('idle') },
   }
   await ctx.agents.register(agent)
   return agent

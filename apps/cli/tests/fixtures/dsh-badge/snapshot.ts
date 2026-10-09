@@ -32,7 +32,8 @@ try {
     inject: () => { throw new Error('dsh-badge snapshot must receive the catalog at the step boundary') },
     cancel: () => {},
     runMaintenance: job => job(new AbortController().signal),
-    whenIdle: () => Promise.resolve(),
+    lastActivityAt: 0,
+    whenIdle: () => Promise.resolve('idle'),
   }
   const decision = await agentEvents(ctx, agent).waterfall(
     'agent/pre-step',

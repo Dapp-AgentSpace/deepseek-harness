@@ -68,7 +68,8 @@ function stubAgent(rawId: string, supplied?: Session, suppliedCtx?: Context): St
     },
     cancel() {},
     runMaintenance: task => task(new AbortController().signal),
-    whenIdle() { return Promise.resolve() },
+    lastActivityAt: 0,
+    whenIdle() { return Promise.resolve('idle') },
   }
   return { agent, session, inbox, setStatus(value) { status = value } }
 }

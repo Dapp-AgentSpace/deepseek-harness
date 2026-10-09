@@ -93,7 +93,8 @@ function stubAgent(id: string, delegationDepth = 0): Agent {
     ctx: new Context(),
     send() {}, followup() {}, steer() {}, inject() {}, cancel() {},
     runMaintenance: task => task(new AbortController().signal),
-    whenIdle: () => Promise.resolve(),
+    lastActivityAt: 0,
+    whenIdle: () => Promise.resolve('idle'),
   }
   return agent
 }
