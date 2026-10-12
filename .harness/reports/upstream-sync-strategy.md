@@ -12,21 +12,21 @@
 |---|---|
 | 本仓 fork | `git@github.com-p:Dapp-AgentSpace/deepseek-harness.git`（origin，person 身份） |
 | 上游官方 | `https://github.com/deepseek-ai/deepseek-harness.git`（**当前无 upstream remote**） |
-| 分叉点（merge-base） | `639ed01539` = 上游 `0.2.0-rc.2`（Merge PR #5479） |
-| 上游当前 master | `d743267388` = `0.2.1-alpha.2`（Merge PR #5946） |
-| 本仓当前 HEAD | `5e0678cad3`（merge-original 分支，与 origin/master 同点） |
-| 本仓独有提交 | 7 个（自 639ed01539 起） |
+| 分叉点（merge-base） | 上游 `0.2.0-rc.2`（Merge PR #5479，hash 见 git merge-base） |
+| 上游当前 master | `0.2.1-alpha.2`（Merge PR #5946） |
+| 本仓当前 HEAD | merge-original 分支（与 origin/master 同点） |
+| 本仓独有提交 | 7 个（自分叉点起，清单见 1.2） |
 | 本仓独有改动规模 | 197 文件，+21959 行 / -108 行 |
 
-### 1.2 本仓 7 个独有提交
+### 1.2 本仓 7 个独有提交（hash 省略，`git log --oneline merge-base..HEAD` 可查）
 ```
-5e0678cad3 deepseek-harness: fix lint            ← 含 typecheck 全仓修复（whenIdle 签名 + lastActivityAt）
-b94756072b deepseek-harness: refine code
-a27c10aab8 deepharness: still fix model ouput dup
-ad8af349e2 deepseek-harness: fix text dep
-18b871a85e Merge pull request #2 from Dapp-AgentSpace/refine
-5bad99f3e5 deppseek-harness: refine text output mass
-130737dc26 deepseek-harness: refine code to process mass messages when output maxToken touched
+deepseek-harness: fix lint            ← 含 typecheck 全仓修复（whenIdle 签名 + lastActivityAt）
+deepseek-harness: refine code
+deepharness: still fix model ouput dup
+deepseek-harness: fix text dep
+Merge pull request #2 from Dapp-AgentSpace/refine
+deppseek-harness: refine text output mass
+deepseek-harness: refine code to process mass messages when output maxToken touched
 ```
 
 ### 1.3 本仓优化核心（需保护的资产）

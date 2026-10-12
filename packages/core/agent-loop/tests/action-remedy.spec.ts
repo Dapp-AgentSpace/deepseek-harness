@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
@@ -47,6 +47,14 @@ async function plainHarness(adapter: MockAdapter) {
 async function fsHarness(adapter: MockAdapter, dir: string) {
   const ctx = await plainHarness(adapter)
   await ctx.plugin(LocalFileSystem, { cwd: dir })
+  // tool-fs resolves call paths through the working-directory service (upstream
+  // 0.2.1 dependency); provide the fixed-directory test collaborator so the fs
+  // tools register and resolve against the per-session cwd.
+  ctx.provide('workingDirectory', {
+    defaultDirectory: dir,
+    get: (session: Session) => session.header.cwd ?? dir,
+    ensure: (agent: Agent): Promise<string> => Promise.resolve(agent.session.header.cwd ?? dir),
+  })
   await ctx.plugin(FsPolicy)
   await ctx.plugin(ToolFs)
   return ctx
