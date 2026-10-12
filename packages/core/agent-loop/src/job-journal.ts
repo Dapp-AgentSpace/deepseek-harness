@@ -176,6 +176,7 @@ export class JobJournal {
 
   /** Replay existing history so a resumed loop sees its predecessor's jobs. */
   private seed(session: Session): void {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     for (const event of session.snapshotEvents()) this.observe(event)
   }
 

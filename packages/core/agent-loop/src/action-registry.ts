@@ -119,7 +119,7 @@ interface PendingCall {
 export class ActionRegistry {
   private readonly records: ActionRecord[] = []
   private readonly byCallId = new Map<ToolCallId, PendingCall>()
-
+  /* jscpd:ignore-start */
   constructor(ctx: Context, session: Session) {
     this.seed(session)
     ctx.on('session/event', (subject, event) => {
@@ -130,10 +130,12 @@ export class ActionRegistry {
 
   /** Replay existing history so a resumed loop still guards repeated failures. */
   private seed(session: Session): void {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     for (const event of session.snapshotEvents()) this.observe(event)
   }
 
   private observe(event: SessionEvent): void {
+    /* jscpd:ignore-end */
     if (event.type === 'tool/call') {
       const args = parseArgs(event.data.arguments)
       const filePath = filePathOf(args)

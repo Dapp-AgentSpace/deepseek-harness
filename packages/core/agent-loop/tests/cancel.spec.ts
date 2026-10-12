@@ -1179,6 +1179,7 @@ describe('Agent.cancel()', () => {
 
       const message = agent.session.snapshotEvents().find(event => event.type === 'assistant/message')
       expect(message?.type === 'assistant/message' ? message.data.message.content : undefined)
+        // oxlint-disable-next-line typescript/no-unsafe-assignment -- expect.stringMatching returns a loose matcher value by design.
         .toEqual([{ type: 'text', text: expect.stringMatching(/^\(interrupted output suppressed — degenerate output:/) }])
       expect(message?.type === 'assistant/message' ? message.data.interrupted : undefined).toBe(true)
       // The repeated paragraphs themselves never reach the log.

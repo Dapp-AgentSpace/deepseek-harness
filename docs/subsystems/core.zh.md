@@ -73,6 +73,8 @@ interface Agent {
   readonly inbox: Inbox
   /** The current lifecycle state, mirrored on every `agent/status` transition. */
   readonly status: AgentStatus
+  /** Wall-clock (epoch ms) of the agent's last phase/step activity transition; advances on every phase commit and step start. */
+  readonly lastActivityAt: number
   /** Agent-scoped context; its contributions are agent-local, unwind on disposal, and reject registration afterward. */
   readonly ctx: Context
 
@@ -89,12 +91,12 @@ interface Agent {
    * Resolve after the current whole-agent activity reaches quiescence. This
    * follows replacement work started before the observed driver retires,
    * but does not identify the settlement of any particular message.
-   * @param options - optional `timeoutMs` budget: a positive bounded wait.
-   *   When the budget elapses while the agent is still active, the promise
-   *   resolves `'timeout'` instead of waiting indefinitely (the agent keeps
-   *   running; the caller decides whether to keep the wait open).
-   * @returns `'idle'` once no active driver or maintenance task remains;
-   *   `'timeout'` when the optional budget expired first.
+   * @param options - optional idle-wait budget; `timeoutMs` must be a positive
+   *   finite number of milliseconds (0, negative, or non-finite values throw,
+   *   mirroring `jobs.wait` validation).
+   * @returns `'idle'` once no active driver or maintenance task remains, or
+   *   `'timeout'` when the budget elapsed first. Without `options` the wait is
+   *   unbounded, byte-identical to the historical no-argument behavior.
    */
   whenIdle(options?: { timeoutMs?: number }): Promise<'idle' | 'timeout'>
 
@@ -115,7 +117,7 @@ interface Agent {
    * turn and runs when the aborted activity converges to idle; a `disposed`
    * cancel leaves it parked. A wake submitted while already idle always opens
    * its turn boundary, even when its message is cleared before the driver
-   * claims ([cancel-convergence wake latch](../../../../.agents/notes/implemented/bug-fix/2026-08-07-cancel-convergence-wake-latch.md)).
+   * claims ([driver wake convergence](../../agent-loop/src/agent.ts)).
    * @param message - identified content and the source that supplied it.
    * @param target - the preferred next-turn or next-step inbox boundary.
    * @param wakeup - whether delivery may wake the driver.
@@ -509,6 +511,12 @@ Registry of YAML-declared presets and the revisions live Agents retain.
  * @returns Definition disposer after activation or its diagnostic settles; the declaring plugin owns it.
  */
 async register(definition: PresetDefinition): Promise<() => Promise<void>>
+
+/** Inspect retained revisions, or the exact revision an Agent joined.
+ * @param ctx - optional Agent context; omission includes all retained revisions.
+ * @returns detached module references and isolation diagnostics; no match returns an empty list.
+ */
+inspectCompositions(ctx?: Context): AgentPresetInspection[]
 
 /** Read every declared preset, including activation failures.
  * @returns Display metadata and loading diagnostics.

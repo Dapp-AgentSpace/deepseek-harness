@@ -8,6 +8,7 @@ import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { mountWorkingDirectoryFixture } from '../../../subagent/subagent/tests/working-directory-fixture.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -43,7 +44,7 @@ class GatedAdapter extends LlmAdapter {
     if (entry.gate) {
       await new Promise<void>((resolve) => {
         if (options.signal?.aborted) { resolve(); return }
-        const release = (): void => resolve()
+        const release = (): void => { resolve() }
         options.signal?.addEventListener('abort', release, { once: true })
         entry.gate!.then(release, release)
       })
@@ -70,6 +71,7 @@ async function setupWith(adapter: MockAdapter | GatedAdapter) {
   const ctx = new Context()
   contexts.add(ctx)
   await mountAgentLoopTestDependencies(ctx)
+  await mountWorkingDirectoryFixture(ctx)
   const root = mkdtempSync(join(tmpdir(), 'dsh-tool-wait-settlement-'))
   roots.push(root)
   await ctx.plugin(JsonlSessionPersistence, { root })
@@ -141,11 +143,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('long child work'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'long child',
       request: { prompt: [{ type: 'text', text: 'do the long task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')
@@ -166,11 +169,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('short child work'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'short child',
       request: { prompt: [{ type: 'text', text: 'do the short task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')
@@ -190,11 +194,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('still working'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'held child',
       request: { prompt: [{ type: 'text', text: 'do the long task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')
@@ -209,11 +214,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
 
   it('rejects a non-positive timeout like jobs.wait does', async () => {
     const { ctx, parent } = await setup([])
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'settled child',
       request: { prompt: [{ type: 'text', text: 'quick task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await waitNoActivation(ctx, started.childId)
     await expect(ctx.subagents.waitSettlement(started.childId, 0)).rejects.toThrow()
@@ -231,11 +237,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('long child work'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'probe running child',
       request: { prompt: [{ type: 'text', text: 'do the long task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')
@@ -249,11 +256,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
 
   it('reports a settled child through the probe path when wait is false', async () => {
     const { ctx, parent } = await setup([])
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'settled probe child',
       request: { prompt: [{ type: 'text', text: 'quick task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await waitNoActivation(ctx, started.childId)
     const result = await callTool(ctx, 'wait_settlement', { agent_id: started.childId, wait: false }, parent)
@@ -263,11 +271,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
 
   it('reports a child that already left as settled immediately (non-resident early return)', async () => {
     const { ctx, parent } = await setup([])
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'departed child',
       request: { prompt: [{ type: 'text', text: 'quick task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await waitNoActivation(ctx, started.childId)
     const outcome = await ctx.subagents.waitSettlement(started.childId, 5_000)
@@ -280,11 +289,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('held child work'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'abort-held child',
       request: { prompt: [{ type: 'text', text: 'do the long task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')
@@ -303,11 +313,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('default-budget child'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'default budget child',
       request: { prompt: [{ type: 'text', text: 'do the short task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')
@@ -327,11 +338,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
       { chunks: textResponse('grandchild'), gate: releaseGrandchild.promise },
       { chunks: textResponse('woken') },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'child task',
       request: { prompt: [{ type: 'text', text: 'child task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     const child = await vi.waitFor(() => {
       const found = ctx.agents.get(started.childId)
@@ -339,11 +351,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
       return found!
     })
     // The child starts its own continuable grandchild, then goes quiescent.
-    const grandchild = await ctx.subagents.startContinuable({
+    const grandchild = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'grandchild task',
       request: { prompt: [{ type: 'text', text: 'grandchild task' }], parent: child },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(child.status).toBe('idle')
@@ -363,11 +376,12 @@ describe('dsh-tool-subagent-control/wait-settlement', () => {
     const { ctx, parent } = await setupWith(new GatedAdapter([
       { chunks: textResponse('long child work'), gate: gate.promise },
     ]))
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'abort child',
       request: { prompt: [{ type: 'text', text: 'do the long task' }], parent },
       signal: testToolSignal,
+      delivery: 'parent',
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('running')

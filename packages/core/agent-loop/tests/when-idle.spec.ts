@@ -58,7 +58,7 @@ describe('agent whenIdle with an idle-wait budget', () => {
     // (ignoring the budget) must not hang the suite, so race it against a bound.
     const result = await Promise.race([
       agent.whenIdle({ timeoutMs: 50 }),
-      new Promise<'hung'>(resolve => setTimeout(() => resolve('hung'), 2000)),
+      new Promise<'hung'>(resolve => setTimeout(() => { resolve('hung') }, 2000)),
     ])
     agent.cancel({ kind: 'user' })
     await waitForIdle(ctx, agent)

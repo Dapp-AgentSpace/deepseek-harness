@@ -341,7 +341,7 @@ describe('post-turn continuation edges', () => {
     })
 
     send(agent, 'go')
-    await expect(agent.whenIdle()).resolves.toBeUndefined()
+    await expect(agent.whenIdle()).resolves.toBe('idle')
     expect(agent.status).toBe('idle')
   })
 })
